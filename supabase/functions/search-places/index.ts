@@ -45,15 +45,16 @@ serve(async (req) => {
       );
     }
 
-    // Use Google Places API Text Search
+    // Use Google Places API Text Search - restricted to Iasi, Romania
     const placesUrl = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
-    placesUrl.searchParams.append('query', query);
+    placesUrl.searchParams.append('query', `${query} Iași Romania`);
     
     if (location) {
       placesUrl.searchParams.append('location', `${location.lat},${location.lng}`);
-      placesUrl.searchParams.append('radius', '50000'); // 50km radius
+      placesUrl.searchParams.append('radius', '20000'); // 20km radius around Iasi
     }
     
+    placesUrl.searchParams.append('region', 'ro'); // Bias results to Romania
     placesUrl.searchParams.append('key', GOOGLE_MAPS_API_KEY);
 
     const response = await fetch(placesUrl.toString());
@@ -67,17 +68,22 @@ serve(async (req) => {
       );
     }
 
-    // Format results
-    const results = data.results.map((place: any) => ({
-      name: place.name,
-      address: place.formatted_address,
-      location: {
-        lat: place.geometry.location.lat,
-        lng: place.geometry.location.lng,
-      },
-      types: place.types,
-      placeId: place.place_id,
-    }));
+    // Format results - filter to only include results from Iasi
+    const results = data.results
+      .filter((place: any) => {
+        const address = place.formatted_address?.toLowerCase() || '';
+        return address.includes('iași') || address.includes('iasi');
+      })
+      .map((place: any) => ({
+        name: place.name,
+        address: place.formatted_address,
+        location: {
+          lat: place.geometry.location.lat,
+          lng: place.geometry.location.lng,
+        },
+        types: place.types,
+        placeId: place.place_id,
+      }));
 
     return new Response(
       JSON.stringify({ results }),
