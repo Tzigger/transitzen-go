@@ -248,12 +248,12 @@ const CreateJourney = () => {
 
             {/* Search Results Dropdown */}
             {showResults && searchResults.length > 0 && (
-              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl max-h-80 overflow-y-auto z-50 bg-background/95 border border-white/20">
+              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl max-h-80 overflow-y-auto z-[60] bg-background border border-primary/30">
                 {searchResults.map((result, index) => (
                   <button
                     key={index}
                     onClick={() => handleSelectPlace(result)}
-                    className="w-full text-left px-4 py-3 hover:bg-primary/10 transition-colors border-b border-white/5 last:border-0 first:rounded-t-2xl last:rounded-b-2xl"
+                    className="w-full text-left px-4 py-3 hover:bg-primary/20 transition-colors border-b border-white/5 last:border-0 first:rounded-t-2xl last:rounded-b-2xl"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-1">
@@ -271,7 +271,7 @@ const CreateJourney = () => {
 
             {/* No results message */}
             {showResults && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
-              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl z-50 bg-background/95 border border-white/20 px-4 py-3">
+              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl z-[60] bg-background border border-primary/30 px-4 py-3">
                 <p className="text-sm text-muted-foreground text-center">Nu s-au găsit rezultate</p>
               </div>
             )}
