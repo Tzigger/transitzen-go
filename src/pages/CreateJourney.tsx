@@ -9,10 +9,16 @@ import BottomNav from "@/components/BottomNav";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+const USER_LOCATION = { lat: 47.1585, lng: 27.6014 };
+
 const CreateJourney = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [destination, setDestination] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [arrivalTime, setArrivalTime] = useState("");
   const [date, setDate] = useState("");
   const [recurringDays, setRecurringDays] = useState<number[]>([]);
@@ -56,6 +62,45 @@ const CreateJourney = () => {
   };
 
   const swipeProgress = isSwiping ? Math.min(touchCurrent / 150, 1) : 0;
+
+  const handleSearch = async (query: string) => {
+    if (!query.trim() || query.length < 3) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setShowResults(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('search-places', {
+        body: {
+          query,
+          location: USER_LOCATION,
+        },
+      });
+
+      if (error) {
+        console.error('Error from search-places:', error);
+        throw error;
+      }
+
+      setSearchResults(data.results || []);
+    } catch (error) {
+      console.error('Error searching places:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectPlace = (place: any) => {
+    setSearchQuery(place.name);
+    setDestination(place.address);
+    setShowResults(false);
+    setSearchResults([]);
+  };
 
   const toggleRecurringDay = (dayIndex: number) => {
     setRecurringDays(prev => 
@@ -181,20 +226,76 @@ const CreateJourney = () => {
             <h2 className="text-lg font-semibold text-foreground">Destination</h2>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="destination" className="text-muted-foreground text-sm">Where do you want to go?</Label>
-            <Input 
-              id="destination"
-              placeholder="Search address or place..."
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              className="h-14 glass border-white/20 text-foreground placeholder:text-muted-foreground rounded-2xl"
-            />
-          </div>
+          <div className="space-y-2 relative">
+            <Label htmlFor="destination" className="text-muted-foreground text-sm">Unde vrei să ajungi?</Label>
+            <div className="relative">
+              <Input 
+                id="destination"
+                placeholder="Caută adresă sau loc..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  handleSearch(e.target.value);
+                }}
+                className="h-14 glass border-white/20 text-foreground placeholder:text-muted-foreground rounded-2xl pr-10"
+              />
+              {isSearching && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
 
-          <Button variant="outline" className="w-full glass hover:glass-strong h-12 rounded-full">
-            📍 Use current location
-          </Button>
+            {/* Search Results Dropdown */}
+            {showResults && searchResults.length > 0 && (
+              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl max-h-80 overflow-y-auto z-50 bg-background/95 border border-white/20">
+                {searchResults.map((result, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSelectPlace(result)}
+                    className="w-full text-left px-4 py-3 hover:bg-primary/10 transition-colors border-b border-white/5 last:border-0 first:rounded-t-2xl last:rounded-b-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-1">
+                        <span className="text-lg">📍</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground text-sm truncate">{result.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{result.address}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* No results message */}
+            {showResults && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
+              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl z-50 bg-background/95 border border-white/20 px-4 py-3">
+                <p className="text-sm text-muted-foreground text-center">Nu s-au găsit rezultate</p>
+              </div>
+            )}
+
+            {/* Selected destination display */}
+            {destination && (
+              <div className="glass p-4 rounded-2xl border border-primary/30 bg-primary/5">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-primary flex-shrink-0" />
+                  <p className="text-sm text-foreground flex-1">{destination}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDestination("");
+                      setSearchQuery("");
+                    }}
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Timing */}
@@ -324,47 +425,6 @@ const CreateJourney = () => {
           </div>
         </div>
 
-        {/* Summary */}
-        <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground mb-2">
-              Alertă pentru ora sosirii
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Setează ora la care vrei să ajungi și primești o notificare când să pleci
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="dest-confirm" className="text-sm text-muted-foreground">
-              Destinație
-            </Label>
-            <div className="relative">
-              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary" />
-              <Input
-                id="dest-confirm"
-                value={destination || "Selectează destinația"}
-                readOnly
-                className="h-14 glass border-white/20 text-foreground rounded-2xl pl-12"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="time-confirm" className="text-sm text-muted-foreground">
-              Ora sosirii
-            </Label>
-            <div className="relative">
-              <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary" />
-              <Input
-                id="time-confirm"
-                value={arrivalTime || "00:00"}
-                readOnly
-                className="h-14 glass border-white/20 text-foreground rounded-2xl pl-12"
-              />
-            </div>
-          </div>
-        </div>
 
         {/* Save Button */}
         <Button 
