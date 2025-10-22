@@ -248,7 +248,7 @@ const CreateJourney = () => {
 
             {/* Search Results Dropdown */}
             {showResults && searchResults.length > 0 && (
-              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl max-h-80 overflow-y-auto z-[60] bg-background border border-primary/30">
+              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl max-h-80 overflow-y-auto z-[100] bg-background border border-primary/30">
                 {searchResults.map((result, index) => (
                   <button
                     key={index}
@@ -271,7 +271,7 @@ const CreateJourney = () => {
 
             {/* No results message */}
             {showResults && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
-              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl z-[60] bg-background border border-primary/30 px-4 py-3">
+              <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl z-[100] bg-background border border-primary/30 px-4 py-3">
                 <p className="text-sm text-muted-foreground text-center">Nu s-au găsit rezultate</p>
               </div>
             )}
