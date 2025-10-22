@@ -7,7 +7,7 @@ const Hero = () => {
       <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
         {/* Left Content */}
         <div className="space-y-6 animate-slide-up">
-          <div className="neu-pressed rounded-2xl px-4 py-2 inline-flex items-center gap-2">
+          <div className="glass-subtle rounded-2xl px-4 py-2 inline-flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-accent" />
             <span className="text-sm font-medium">AI-Powered Transport</span>
           </div>
@@ -25,14 +25,14 @@ const Hero = () => {
           <div className="flex flex-col sm:flex-row gap-4 pt-4">
             <Button 
               size="lg"
-              className="neu-button bg-gradient-to-r from-primary to-accent text-white border-0 shadow-lg hover:shadow-xl"
+              className="glass-button bg-gradient-to-r from-primary to-accent text-white shadow-lg hover:shadow-xl hover:scale-105"
             >
               Get Started
             </Button>
             <Button 
               size="lg" 
               variant="outline"
-              className="neu-flat border-0"
+              className="glass border-0"
             >
               Learn More
             </Button>
@@ -47,7 +47,7 @@ const Hero = () => {
             ].map((stat, index) => (
               <div 
                 key={index}
-                className="neu-pressed rounded-xl p-4 text-center"
+                className="glass-subtle rounded-xl p-4 text-center hover:glass transition-all"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
                 <p className="text-2xl font-bold text-primary">{stat.value}</p>
@@ -59,13 +59,13 @@ const Hero = () => {
 
         {/* Right Visual */}
         <div className="relative">
-          <div className="neu-float rounded-3xl p-8 animate-float">
+          <div className="glass-card rounded-3xl p-8 animate-float">
             <div className="space-y-4">
               {/* Mock Bus Card */}
-              <div className="neu-pressed rounded-2xl p-6 space-y-4">
+              <div className="glass-subtle rounded-2xl p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="neu-flat rounded-full p-3">
+                    <div className="glass rounded-full p-3">
                       <Clock className="w-6 h-6 text-accent" />
                     </div>
                     <div>
@@ -73,13 +73,13 @@ const Hero = () => {
                       <p className="text-sm text-muted-foreground">to Copou</p>
                     </div>
                   </div>
-                  <div className="neu-pressed rounded-full px-4 py-2">
+                  <div className="glass-subtle rounded-full px-4 py-2">
                     <span className="text-sm font-mono font-bold">3 min</span>
                   </div>
                 </div>
                 
                 {/* Progress Bar */}
-                <div className="neu-pressed rounded-full h-2 overflow-hidden">
+                <div className="glass-subtle rounded-full h-2 overflow-hidden">
                   <div 
                     className="h-full rounded-full bg-gradient-to-r from-primary to-accent animate-pulse"
                     style={{ width: "75%" }}
@@ -93,8 +93,8 @@ const Hero = () => {
               </div>
 
               {/* Notification Card */}
-              <div className="neu-float rounded-2xl p-4 flex items-center gap-3 animate-neu-pulse">
-                <div className="neu-pressed rounded-full p-2">
+              <div className="glass rounded-2xl p-4 flex items-center gap-3 animate-glass-pulse">
+                <div className="glass-subtle rounded-full p-2">
                   <Bell className="w-5 h-5 text-warning" />
                 </div>
                 <div className="flex-1">
@@ -106,10 +106,10 @@ const Hero = () => {
           </div>
 
           {/* Floating Elements */}
-          <div className="absolute -top-4 -right-4 neu-flat rounded-full p-4 animate-float" style={{ animationDelay: "0.5s" }}>
+          <div className="absolute -top-4 -right-4 glass rounded-full p-4 animate-float" style={{ animationDelay: "0.5s" }}>
             <Sparkles className="w-6 h-6 text-accent" />
           </div>
-          <div className="absolute -bottom-4 -left-4 neu-flat rounded-full p-4 animate-float" style={{ animationDelay: "1s" }}>
+          <div className="absolute -bottom-4 -left-4 glass rounded-full p-4 animate-float" style={{ animationDelay: "1s" }}>
             <TrendingUp className="w-6 h-6 text-success" />
           </div>
         </div>

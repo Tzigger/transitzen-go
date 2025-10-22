@@ -13,7 +13,7 @@ const Navigation = () => {
     <>
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 pb-safe">
-        <div className="neu-float rounded-t-3xl px-4 py-3">
+        <div className="glass-strong rounded-t-3xl px-4 py-3 border-t">
           <div className="flex justify-around items-center">
             {navItems.map((item) => (
               <NavLink
@@ -22,8 +22,8 @@ const Navigation = () => {
                 className={({ isActive }) =>
                   `flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all ${
                     isActive
-                      ? "neu-pressed text-primary"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "glass-subtle text-primary shadow-lg"
+                      : "text-muted-foreground hover:text-foreground hover:glass-subtle"
                   }`
                 }
               >
@@ -37,9 +37,9 @@ const Navigation = () => {
 
       {/* Desktop Sidebar */}
       <nav className="hidden md:block fixed left-0 top-0 h-screen w-64 p-4">
-        <div className="neu-card h-full flex flex-col">
+        <div className="glass-card h-full flex flex-col">
           <div className="flex items-center gap-3 mb-8 p-4">
-            <div className="neu-pressed rounded-full p-3">
+            <div className="glass-subtle rounded-full p-3">
               <MapPin className="w-6 h-6 text-primary" />
             </div>
             <div>
@@ -56,8 +56,8 @@ const Navigation = () => {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                     isActive
-                      ? "neu-pressed text-primary font-semibold"
-                      : "neu-flat hover:neu-float text-foreground"
+                      ? "glass-strong text-primary font-semibold shadow-lg"
+                      : "glass-subtle hover:glass text-foreground"
                   }`
                 }
               >
@@ -67,7 +67,7 @@ const Navigation = () => {
             ))}
           </div>
 
-          <div className="mt-auto neu-pressed rounded-xl p-4">
+          <div className="mt-auto glass-subtle rounded-xl p-4">
             <p className="text-xs text-muted-foreground text-center">
               v1.0.0 • Built with ❤️
             </p>

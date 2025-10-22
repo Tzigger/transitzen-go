@@ -48,7 +48,7 @@ const MapView = () => {
       <main className="h-screen p-4 md:p-8 relative">
         {/* Search Bar */}
         <div className="absolute top-20 md:top-8 left-4 md:left-72 right-4 z-[1000]">
-          <div className="neu-float rounded-2xl p-4 max-w-md">
+          <div className="glass rounded-2xl p-4 max-w-md">
             <div className="flex items-center gap-3">
               <Search className="w-5 h-5 text-muted-foreground" />
               <input
@@ -62,19 +62,19 @@ const MapView = () => {
 
         {/* Floating Controls */}
         <div className="absolute top-40 md:top-24 right-4 z-[1000] space-y-2">
-          <button className="neu-flat rounded-xl p-3 hover:neu-pressed transition-all block">
+          <button className="glass rounded-xl p-3 hover:glass-strong transition-all block">
             <MapPin className="w-5 h-5" />
           </button>
-          <button className="neu-flat rounded-xl p-3 hover:neu-pressed transition-all block">
+          <button className="glass rounded-xl p-3 hover:glass-strong transition-all block">
             <NavigationIcon className="w-5 h-5" />
           </button>
-          <button className="neu-flat rounded-xl p-3 hover:neu-pressed transition-all block">
+          <button className="glass rounded-xl p-3 hover:glass-strong transition-all block">
             <Layers className="w-5 h-5" />
           </button>
         </div>
 
         {/* Map Container */}
-        <div className="neu-pressed rounded-3xl overflow-hidden h-[calc(100vh-8rem)] md:h-[calc(100vh-4rem)]">
+        <div className="glass-subtle rounded-3xl overflow-hidden h-[calc(100vh-8rem)] md:h-[calc(100vh-4rem)]">
           <MapContainer
             center={center}
             zoom={13}
@@ -115,7 +115,7 @@ const MapView = () => {
 
         {/* Bottom Info Card (Mobile) */}
         <div className="absolute bottom-24 md:bottom-8 left-4 right-4 z-[1000] md:hidden">
-          <div className="neu-float rounded-2xl p-4">
+          <div className="glass rounded-2xl p-4">
             <p className="text-sm font-semibold mb-2">Nearby Buses</p>
             <div className="space-y-2">
               {buses.slice(0, 2).map((bus) => (

@@ -2,86 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
-/* TransitIQ Neumorphic Design System - All styles defined here */
+/* TransitIQ Glassomorphism Design System - iOS 16 Style */
 
 @layer base {
   :root {
-    /* Neumorphic Base Colors */
-    --neu-bg: 224 15% 90%;
-    --neu-shadow-dark: 224 15% 67%;
-    --neu-shadow-light: 0 0% 100%;
+    /* Glassomorphism Base */
+    --glass-bg: 255 255 255;
+    --glass-border: 255 255 255;
     
-    /* Brand Colors */
+    /* Brand Colors - More vibrant for glass effect */
     --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
     
-    --accent: 168 76% 42%;
+    --accent: 168 76% 50%;
     --accent-foreground: 0 0% 100%;
     
-    --success: 142 76% 36%;
-    --warning: 38 92% 50%;
+    --success: 142 76% 45%;
+    --warning: 38 92% 55%;
     --danger: 0 84% 60%;
     
     /* Semantic Colors */
-    --background: 224 15% 90%;
-    --foreground: 224 30% 15%;
+    --background: 220 25% 96%;
+    --foreground: 224 30% 10%;
     
-    --card: 224 15% 90%;
-    --card-foreground: 224 30% 15%;
+    --card: 255 255 255;
+    --card-foreground: 224 30% 10%;
     
-    --popover: 224 15% 90%;
-    --popover-foreground: 224 30% 15%;
+    --popover: 255 255 255;
+    --popover-foreground: 224 30% 10%;
     
-    --secondary: 224 15% 85%;
-    --secondary-foreground: 224 30% 15%;
+    --secondary: 220 20% 90%;
+    --secondary-foreground: 224 30% 10%;
     
-    --muted: 224 15% 80%;
+    --muted: 220 15% 85%;
     --muted-foreground: 224 20% 40%;
     
-    --border: 224 15% 80%;
-    --input: 224 15% 80%;
+    --border: 224 15% 88%;
+    --input: 255 255 255;
     --ring: 239 84% 67%;
     
-    --radius: 1rem;
+    --radius: 1.25rem;
     
-    /* Neumorphic Gradients */
-    --gradient-flat: linear-gradient(145deg, hsl(224 15% 92%), hsl(224 15% 88%));
-    --gradient-pressed: linear-gradient(145deg, hsl(224 15% 88%), hsl(224 15% 92%));
+    /* Glass Gradients */
+    --gradient-mesh: linear-gradient(135deg, hsl(239 84% 67% / 0.1) 0%, hsl(168 76% 50% / 0.1) 100%);
+    --gradient-glow: radial-gradient(circle at 50% 0%, hsl(239 84% 67% / 0.15), transparent 50%);
   }
 
   .dark {
-    /* Dark Mode Neumorphic */
-    --neu-bg: 224 30% 10%;
-    --neu-shadow-dark: 224 30% 5%;
-    --neu-shadow-light: 224 30% 15%;
+    /* Dark Mode Glassomorphism */
+    --glass-bg: 0 0% 5%;
+    --glass-border: 255 255 255;
     
-    --background: 224 30% 10%;
-    --foreground: 224 15% 90%;
+    --background: 220 25% 8%;
+    --foreground: 220 15% 95%;
     
-    --card: 224 30% 10%;
-    --card-foreground: 224 15% 90%;
+    --card: 0 0% 5%;
+    --card-foreground: 220 15% 95%;
     
-    --popover: 224 30% 10%;
-    --popover-foreground: 224 15% 90%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 220 15% 95%;
     
     --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
     
-    --secondary: 224 30% 15%;
-    --secondary-foreground: 224 15% 90%;
+    --secondary: 220 20% 12%;
+    --secondary-foreground: 220 15% 95%;
     
-    --muted: 224 30% 15%;
-    --muted-foreground: 224 15% 60%;
+    --muted: 220 20% 15%;
+    --muted-foreground: 220 15% 65%;
     
-    --accent: 168 76% 42%;
+    --accent: 168 76% 50%;
     --accent-foreground: 0 0% 100%;
     
-    --border: 224 30% 15%;
-    --input: 224 30% 15%;
+    --border: 220 20% 18%;
+    --input: 0 0% 5%;
     --ring: 239 84% 67%;
     
-    --gradient-flat: linear-gradient(145deg, hsl(224 30% 12%), hsl(224 30% 8%));
-    --gradient-pressed: linear-gradient(145deg, hsl(224 30% 8%), hsl(224 30% 12%));
+    --gradient-mesh: linear-gradient(135deg, hsl(239 84% 67% / 0.15) 0%, hsl(168 76% 50% / 0.15) 100%);
+    --gradient-glow: radial-gradient(circle at 50% 0%, hsl(239 84% 67% / 0.2), transparent 50%);
   }
 }
 
@@ -92,73 +90,121 @@
 
   body {
     @apply bg-background text-foreground;
+    background-image: var(--gradient-glow);
+    background-attachment: fixed;
   }
   
   /* Smooth scrolling */
   html {
     scroll-behavior: smooth;
   }
+  
+  /* Enable backdrop filters globally */
+  @supports (backdrop-filter: blur(10px)) {
+    .supports-backdrop-blur {
+      backdrop-filter: blur(10px);
+    }
+  }
 }
 
 @layer components {
-  /* Neumorphic Effects */
-  .neu-flat {
-    background: var(--gradient-flat);
+  /* Glassomorphism Effects */
+  .glass {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--glass-bg) / 0.7) 0%,
+      hsl(var(--glass-bg) / 0.5) 100%
+    );
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid hsl(var(--glass-border) / 0.18);
     box-shadow: 
-      8px 8px 16px hsl(var(--neu-shadow-dark)),
-      -8px -8px 16px hsl(var(--neu-shadow-light));
+      0 8px 32px hsl(var(--foreground) / 0.08),
+      inset 0 1px 0 hsl(var(--glass-border) / 0.3);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  .neu-pressed {
-    background: var(--gradient-pressed);
+  .glass-strong {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--glass-bg) / 0.85) 0%,
+      hsl(var(--glass-bg) / 0.65) 100%
+    );
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 1px solid hsl(var(--glass-border) / 0.25);
     box-shadow: 
-      inset 5px 5px 10px hsl(var(--neu-shadow-dark)),
-      inset -5px -5px 10px hsl(var(--neu-shadow-light));
+      0 8px 32px hsl(var(--foreground) / 0.12),
+      inset 0 1px 0 hsl(var(--glass-border) / 0.4);
   }
   
-  .neu-float {
-    background: hsl(var(--neu-bg));
+  .glass-subtle {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--glass-bg) / 0.5) 0%,
+      hsl(var(--glass-bg) / 0.3) 100%
+    );
+    backdrop-filter: blur(15px) saturate(180%);
+    -webkit-backdrop-filter: blur(15px) saturate(180%);
+    border: 1px solid hsl(var(--glass-border) / 0.12);
     box-shadow: 
-      12px 12px 24px hsl(var(--neu-shadow-dark)),
-      -12px -12px 24px hsl(var(--neu-shadow-light));
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      0 4px 16px hsl(var(--foreground) / 0.05),
+      inset 0 1px 0 hsl(var(--glass-border) / 0.2);
   }
   
-  .neu-float:hover {
-    transform: translateY(-4px);
+  .glass:hover {
+    transform: translateY(-2px);
     box-shadow: 
-      16px 16px 32px hsl(var(--neu-shadow-dark)),
-      -16px -16px 32px hsl(var(--neu-shadow-light));
+      0 12px 40px hsl(var(--foreground) / 0.12),
+      inset 0 1px 0 hsl(var(--glass-border) / 0.4);
+    border-color: hsl(var(--glass-border) / 0.25);
   }
   
   /* Interactive States */
-  .neu-button {
-    @apply neu-flat rounded-2xl px-6 py-3 font-semibold;
-    @apply active:neu-pressed active:scale-95;
+  .glass-button {
+    @apply glass rounded-2xl px-6 py-3 font-semibold;
+    @apply active:scale-95;
     @apply transition-all duration-200;
   }
   
-  .neu-input {
-    @apply neu-pressed rounded-xl px-4 py-3;
-    @apply bg-transparent outline-none w-full;
+  .glass-button:active {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--glass-bg) / 0.6) 0%,
+      hsl(var(--glass-bg) / 0.4) 100%
+    );
   }
   
-  .neu-card {
-    @apply neu-float rounded-3xl p-6;
+  .glass-input {
+    @apply glass-subtle rounded-xl px-4 py-3;
+    @apply bg-transparent outline-none w-full;
+    @apply focus:border-primary/50 focus:shadow-lg;
+  }
+  
+  .glass-card {
+    @apply glass rounded-3xl p-6;
   }
   
   /* Animations */
-  @keyframes neu-pulse {
+  @keyframes glass-pulse {
     0%, 100% { 
       box-shadow: 
-        12px 12px 24px hsl(var(--neu-shadow-dark)),
-        -12px -12px 24px hsl(var(--neu-shadow-light));
+        0 8px 32px hsl(var(--foreground) / 0.08),
+        inset 0 1px 0 hsl(var(--glass-border) / 0.3);
     }
     50% { 
       box-shadow: 
-        16px 16px 32px hsl(var(--neu-shadow-dark)),
-        -16px -16px 32px hsl(var(--neu-shadow-light));
+        0 12px 40px hsl(var(--primary) / 0.15),
+        inset 0 1px 0 hsl(var(--glass-border) / 0.5);
+    }
+  }
+  
+  @keyframes glass-shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
     }
   }
   
@@ -182,12 +228,23 @@
     animation: float 3s ease-in-out infinite;
   }
   
-  .animate-neu-pulse {
-    animation: neu-pulse 2s ease-in-out infinite;
+  .animate-glass-pulse {
+    animation: glass-pulse 2s ease-in-out infinite;
   }
   
   .animate-slide-up {
     animation: slide-up 0.6s ease-out forwards;
+  }
+  
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--primary) / 0.1),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: glass-shimmer 2s infinite;
   }
   
   /* Gradient Text */
