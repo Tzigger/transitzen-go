@@ -1,149 +1,193 @@
-import { Clock, MapPin, Star, TrendingUp, Bus, Bell } from "lucide-react";
-import Navigation from "@/components/Navigation";
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Plus, Bell, Settings, Map, Clock, TrendingUp, Users, Zap, Leaf, Wallet, Route, AlertTriangle, CheckCircle, Info, ChevronRight, Navigation } from "lucide-react";
+import BottomNav from "@/components/BottomNav";
+import { useNavigate } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
-  const savedRoutes = [
-    { name: "Home → Work", bus: "28", time: "08:15", favorite: true },
-    { name: "Work → Gym", bus: "41", time: "17:30", favorite: false },
-    { name: "City Center", bus: "3, 13", time: "Variable", favorite: true },
+  const navigate = useNavigate();
+  const currentHour = new Date().getHours();
+  const greeting = currentHour < 12 ? "Bună dimineața" : currentHour < 18 ? "Bună ziua" : "Bună seara";
+  const [userName, setUserName] = useState<string>("");
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate("/login");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (profile && profile.first_name) {
+        setUserName(profile.first_name);
+      } else {
+        setUserName(session.user.email?.split('@')[0] || 'Utilizator');
+      }
+    };
+
+    fetchUserProfile();
+  }, [navigate]);
+
+  const tips = [
+    { icon: Zap, title: "Pleacă cu 5 min mai devreme", desc: "Evită stresul de a prinde autobuzul" },
+    { icon: AlertTriangle, title: "Verifică traficul live", desc: "Înainte de a pleca vezi statusul în timp real" },
+    { icon: CheckCircle, title: "Salvează rute frecvente", desc: "Acces rapid la destinațiile tale favorite" },
   ];
 
-  const upcomingDepartures = [
-    { bus: "28", destination: "Copou", time: "3 min", occupancy: 45 },
-    { bus: "41", destination: "Podu Roș", time: "7 min", occupancy: 72 },
-    { bus: "13", destination: "Tătărași", time: "12 min", occupancy: 28 },
+  const popularRoutes = [
+    { id: 1, from: "Centru", to: "Universitate", time: "25 min", emoji: "🎓" },
+    { id: 2, from: "Gară", to: "Palas", time: "18 min", emoji: "🛍️" },
+    { id: 3, from: "Tudor", to: "Copou", time: "32 min", emoji: "🏛️" },
   ];
 
   return (
-    <div className="min-h-screen pb-20 md:pb-8 md:pl-64">
-      <Navigation />
-      
-      <main className="p-4 md:p-8 space-y-6">
-        {/* Header */}
-        <header className="neu-card">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold mb-1">
-                Welcome back! 👋
-              </h1>
-              <p className="text-muted-foreground">
-                Your smart transport dashboard
-              </p>
-            </div>
-            <div className="neu-pressed rounded-full p-4">
-              <Bell className="w-6 h-6 text-primary" />
-            </div>
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Saved Routes */}
-          <section className="neu-card space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold flex items-center gap-2">
-                <Star className="w-5 h-5 text-warning" />
-                Saved Routes
-              </h2>
-              <button className="neu-flat rounded-xl px-4 py-2 text-sm font-medium">
-                + New
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {savedRoutes.map((route, index) => (
-                <div key={index} className="neu-pressed rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-accent" />
-                      <span className="font-semibold">{route.name}</span>
-                    </div>
-                    {route.favorite && (
-                      <Star className="w-4 h-4 fill-warning text-warning" />
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>Bus {route.bus}</span>
-                    <span>{route.time}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Upcoming Departures */}
-          <section className="neu-card space-y-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
-              Upcoming Departures
-            </h2>
-
-            <div className="space-y-3">
-              {upcomingDepartures.map((departure, index) => (
-                <div key={index} className="neu-float rounded-2xl p-4 hover:neu-pressed transition-all">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="neu-pressed rounded-full p-2">
-                        <Bus className="w-5 h-5 text-accent" />
-                      </div>
-                      <div>
-                        <p className="font-semibold">Bus {departure.bus}</p>
-                        <p className="text-sm text-muted-foreground">
-                          to {departure.destination}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="neu-pressed rounded-full px-4 py-2">
-                      <span className="text-sm font-bold text-primary">
-                        {departure.time}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Occupancy Bar */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Occupancy</span>
-                      <span>{departure.occupancy}%</span>
-                    </div>
-                    <div className="neu-pressed rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          departure.occupancy > 70
-                            ? "bg-danger"
-                            : departure.occupancy > 40
-                            ? "bg-warning"
-                            : "bg-success"
-                        }`}
-                        style={{ width: `${departure.occupancy}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+    <div className="min-h-screen bg-background pb-24">
+      {/* Main Content */}
+      <div className="px-4 pt-6 space-y-6 max-w-md mx-auto">
+        {/* Welcome Section */}
+        <div className="glass-card p-6 rounded-[2rem] shadow-xl animate-slide-up">
+          <h2 className="text-3xl font-bold text-foreground mb-2">{greeting}, {userName}! 👋</h2>
+          <p className="text-muted-foreground">Hai să planificăm următoarea ta călătorie</p>
         </div>
 
-        {/* Smart Alert Preview */}
-        <section className="neu-float rounded-2xl p-6 animate-neu-pulse">
-          <div className="flex items-center gap-4">
-            <div className="neu-pressed rounded-full p-3">
-              <TrendingUp className="w-6 h-6 text-success" />
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="glass-card p-5 rounded-3xl hover-lift">
+            <div className="w-12 h-12 rounded-2xl bg-success/20 flex items-center justify-center mb-3">
+              <Clock className="w-6 h-6 text-success" />
             </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg mb-1">
-                Smart Alert Active
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                We'll notify you when to leave for your 17:30 bus
-              </p>
-            </div>
-            <button className="neu-flat rounded-xl px-6 py-3 font-medium hover:neu-pressed transition-all">
-              Configure
-            </button>
+            <p className="text-2xl font-bold text-foreground">2.5h</p>
+            <p className="text-xs text-muted-foreground mt-1">Timp salvat săptămâna asta</p>
           </div>
-        </section>
-      </main>
+          
+          <div className="glass-card p-5 rounded-3xl hover-lift">
+            <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center mb-3">
+              <TrendingUp className="w-6 h-6 text-primary" />
+            </div>
+            <p className="text-2xl font-bold text-foreground">28</p>
+            <p className="text-xs text-muted-foreground mt-1">Călătorii luna aceasta</p>
+          </div>
+        </div>
+
+        {/* Plan Your Trip - CTA */}
+        <Button 
+          onClick={() => navigate('/create-journey')}
+          className="w-full h-20 gradient-primary rounded-[2rem] shadow-2xl hover:shadow-xl transition-all hover:scale-[1.02] text-lg font-semibold"
+        >
+          <Navigation className="w-6 h-6 mr-2" />
+          Planifică călătoria
+        </Button>
+
+        {/* Traffic Status */}
+        <div className="glass-card p-5 rounded-[2rem] shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">Trafic în oraș</h3>
+                <p className="text-xs text-muted-foreground">Actualizat acum 2 min</p>
+              </div>
+            </div>
+            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30">
+              Moderat
+            </Badge>
+          </div>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 glass rounded-2xl">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🚍</span>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Autobuze</p>
+                  <p className="text-xs text-muted-foreground">Întârzieri minore</p>
+                </div>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+            </div>
+
+            <div className="flex items-center justify-between p-3 glass rounded-2xl">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🚊</span>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Tramvaie</p>
+                  <p className="text-xs text-muted-foreground">Program normal</p>
+                </div>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Tips */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-2">
+            <Info className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">Sfaturi utile</h3>
+          </div>
+          
+          {tips.map((tip, idx) => {
+            const TipIcon = tip.icon;
+            return (
+              <div key={idx} className="glass-card p-4 rounded-2xl flex items-start gap-3 hover:bg-white/5 transition-colors">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <TipIcon className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-foreground text-sm">{tip.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{tip.desc}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Popular Routes */}
+        <div className="space-y-3 pb-4">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-lg font-semibold text-foreground">Rute populare</h3>
+            <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 rounded-full">
+              Vezi toate
+            </Button>
+          </div>
+
+          {popularRoutes.map((route) => (
+            <button
+              key={route.id}
+              onClick={() => navigate('/create-journey')}
+              className="w-full glass-card p-4 rounded-2xl hover:bg-white/5 transition-all text-left"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{route.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-semibold text-foreground">{route.from}</span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    <span className="font-semibold text-foreground">{route.to}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">~{route.time}</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom fade for nav bar */}
+      <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-40" />
+
+      <BottomNav />
     </div>
   );
 };
