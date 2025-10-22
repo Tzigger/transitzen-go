@@ -218,7 +218,7 @@ const CreateJourney = () => {
       {/* Form */}
       <div className="px-4 space-y-6 animate-slide-up max-w-md mx-auto">
         {/* Destination */}
-        <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+        <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl relative z-50">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center">
               <MapPin className="w-6 h-6 text-primary" />
