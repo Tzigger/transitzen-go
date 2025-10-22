@@ -14,7 +14,114 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      journeys: {
+        Row: {
+          arrival_date: string
+          arrival_time: string
+          created_at: string
+          destination: string
+          id: string
+          is_active: boolean
+          notify_crowding: boolean
+          notify_delays: boolean
+          notify_departure: boolean
+          notify_route_changes: boolean
+          recurring_days: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          arrival_date: string
+          arrival_time: string
+          created_at?: string
+          destination: string
+          id?: string
+          is_active?: boolean
+          notify_crowding?: boolean
+          notify_delays?: boolean
+          notify_departure?: boolean
+          notify_route_changes?: boolean
+          recurring_days?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          arrival_date?: string
+          arrival_time?: string
+          created_at?: string
+          destination?: string
+          id?: string
+          is_active?: boolean
+          notify_crowding?: boolean
+          notify_delays?: boolean
+          notify_departure?: boolean
+          notify_route_changes?: boolean
+          recurring_days?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          first_name?: string | null
+          id: string
+          last_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_preferences: {
+        Row: {
+          created_at: string
+          dark_mode_enabled: boolean
+          id: string
+          language: string
+          notifications_enabled: boolean
+          units: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          dark_mode_enabled?: boolean
+          id?: string
+          language?: string
+          notifications_enabled?: boolean
+          units?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          dark_mode_enabled?: boolean
+          id?: string
+          language?: string
+          notifications_enabled?: boolean
+          units?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
