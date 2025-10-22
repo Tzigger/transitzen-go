@@ -13,6 +13,7 @@ import {
   DrawerDescription,
 } from "@/components/ui/drawer";
 import Map, { MapRef } from "@/components/Map";
+import { supabase } from "@/integrations/supabase/client";
 
 const vehicleTypes = [
   { id: 'bus', label: 'Autobuze', icon: Bus, emoji: '🚍' },
@@ -66,23 +67,18 @@ const MapView = () => {
     setShowResults(true);
     
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/search-places`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('search-places', {
+        body: {
           query,
           location: USER_LOCATION,
-        }),
+        },
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to search places');
+      if (error) {
+        console.error('Error from search-places:', error);
+        throw error;
       }
 
-      const data = await response.json();
       setSearchResults(data.results || []);
     } catch (error) {
       console.error('Error searching places:', error);
@@ -107,18 +103,14 @@ const MapView = () => {
   useEffect(() => {
     const fetchTransitData = async () => {
       try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const response = await fetch(`${supabaseUrl}/functions/v1/get-transit-data`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
+        const { data, error } = await supabase.functions.invoke('get-transit-data');
 
-        if (response.ok) {
-          const data = await response.json();
-          setTransitData(data);
+        if (error) {
+          console.error('Error fetching transit data:', error);
+          return;
         }
+
+        setTransitData(data);
       } catch (error) {
         console.error('Error fetching transit data:', error);
       }

@@ -1,1 +1,10 @@
 project_id = "wugukbeocnakdkjntrvy"
+
+[functions.search-places]
+verify_jwt = false
+
+[functions.get-transit-data]
+verify_jwt = false
+
+[functions.calculate-route]
+verify_jwt = false
