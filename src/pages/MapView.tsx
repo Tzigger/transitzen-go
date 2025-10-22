@@ -156,6 +156,48 @@ const MapView = () => {
         const vehicleType = vehicle.vehicle_type === 0 ? 'tram' : 'bus';
         const vehicleColor = vehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
 
+        // Find next station
+        let nextStation = null;
+        let nextStationDistance = null;
+        
+        if (transitData.routeToTripMap && transitData.tripStopSequences && transitData.stops) {
+          const tripId = transitData.routeToTripMap[vehicle.routeId];
+          
+          if (tripId && transitData.tripStopSequences[tripId]) {
+            const stopSequence = transitData.tripStopSequences[tripId];
+            
+            // Calculate distances to all stops in the sequence
+            const stopsWithDistance = stopSequence.map((stopInfo: any) => {
+              const stop = transitData.stops.find((s: any) => s.id === stopInfo.stopId);
+              if (!stop) return null;
+              
+              const stopDist = calculateDistance(
+                vehicle.latitude,
+                vehicle.longitude,
+                stop.latitude,
+                stop.longitude
+              );
+              
+              return {
+                ...stopInfo,
+                stop,
+                distanceFromVehicle: stopDist,
+              };
+            }).filter(Boolean);
+            
+            // Find the closest stop that's ahead (not behind the vehicle)
+            // We'll assume the vehicle is moving towards the closest stop
+            const closestStop = stopsWithDistance
+              .filter((s: any) => s.distanceFromVehicle > 0.05) // More than 50m away
+              .sort((a: any, b: any) => a.distanceFromVehicle - b.distanceFromVehicle)[0];
+            
+            if (closestStop) {
+              nextStation = closestStop.stop.name;
+              nextStationDistance = `${Math.round(closestStop.distanceFromVehicle * 1000)}m`;
+            }
+          }
+        }
+
         return {
           id: vehicle.id,
           number: vehicle.label || routeInfo?.route_short_name || '?',
@@ -168,6 +210,8 @@ const MapView = () => {
           routeInfo: routeInfo,
           wheelchair: vehicle.wheelchair_accessible === 'WHEELCHAIR_ACCESSIBLE',
           emoji: vehicleType === 'tram' ? '🚊' : '🚍',
+          nextStation,
+          nextStationDistance,
         };
       })
       .sort((a: any, b: any) => {
@@ -386,6 +430,14 @@ const MapView = () => {
                         <p className="text-xs text-muted-foreground mb-2 truncate">
                           {vehicle.routeInfo.route_long_name}
                         </p>
+                      )}
+                      {vehicle.nextStation && (
+                        <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-primary/10 rounded-full w-fit">
+                          <span className="text-xs font-semibold text-primary">→ {vehicle.nextStation}</span>
+                          {vehicle.nextStationDistance && (
+                            <span className="text-xs text-muted-foreground">({vehicle.nextStationDistance})</span>
+                          )}
+                        </div>
                       )}
                       <div className="flex items-center gap-3 text-sm text-muted-foreground">
                         <span>📍 {vehicle.distance}</span>
