@@ -20,7 +20,7 @@ const Dashboard = () => {
       
       <main className="p-4 md:p-8 space-y-6">
         {/* Header */}
-        <header className="glass-card">
+        <header className="neu-card">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold mb-1">
@@ -30,7 +30,7 @@ const Dashboard = () => {
                 Your smart transport dashboard
               </p>
             </div>
-            <div className="glass-subtle rounded-full p-4 hover:glass transition-all cursor-pointer">
+            <div className="neu-pressed rounded-full p-4">
               <Bell className="w-6 h-6 text-primary" />
             </div>
           </div>
@@ -38,20 +38,20 @@ const Dashboard = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Saved Routes */}
-          <section className="glass-card space-y-4">
+          <section className="neu-card space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold flex items-center gap-2">
                 <Star className="w-5 h-5 text-warning" />
                 Saved Routes
               </h2>
-              <button className="glass-subtle rounded-xl px-4 py-2 text-sm font-medium hover:glass transition-all">
+              <button className="neu-flat rounded-xl px-4 py-2 text-sm font-medium">
                 + New
               </button>
             </div>
 
             <div className="space-y-3">
               {savedRoutes.map((route, index) => (
-                <div key={index} className="glass-subtle rounded-2xl p-4 hover:glass transition-all cursor-pointer">
+                <div key={index} className="neu-pressed rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-accent" />
@@ -71,7 +71,7 @@ const Dashboard = () => {
           </section>
 
           {/* Upcoming Departures */}
-          <section className="glass-card space-y-4">
+          <section className="neu-card space-y-4">
             <h2 className="text-xl font-semibold flex items-center gap-2">
               <Clock className="w-5 h-5 text-primary" />
               Upcoming Departures
@@ -79,10 +79,10 @@ const Dashboard = () => {
 
             <div className="space-y-3">
               {upcomingDepartures.map((departure, index) => (
-                <div key={index} className="glass rounded-2xl p-4 hover:glass-strong transition-all cursor-pointer">
+                <div key={index} className="neu-float rounded-2xl p-4 hover:neu-pressed transition-all">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="glass-subtle rounded-full p-2">
+                      <div className="neu-pressed rounded-full p-2">
                         <Bus className="w-5 h-5 text-accent" />
                       </div>
                       <div>
@@ -92,7 +92,7 @@ const Dashboard = () => {
                         </p>
                       </div>
                     </div>
-                    <div className="glass-subtle rounded-full px-4 py-2">
+                    <div className="neu-pressed rounded-full px-4 py-2">
                       <span className="text-sm font-bold text-primary">
                         {departure.time}
                       </span>
@@ -105,7 +105,7 @@ const Dashboard = () => {
                       <span>Occupancy</span>
                       <span>{departure.occupancy}%</span>
                     </div>
-                    <div className="glass-subtle rounded-full h-2 overflow-hidden">
+                    <div className="neu-pressed rounded-full h-2 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
                           departure.occupancy > 70
@@ -125,9 +125,9 @@ const Dashboard = () => {
         </div>
 
         {/* Smart Alert Preview */}
-        <section className="glass rounded-2xl p-6 animate-glass-pulse">
+        <section className="neu-float rounded-2xl p-6 animate-neu-pulse">
           <div className="flex items-center gap-4">
-            <div className="glass-subtle rounded-full p-3">
+            <div className="neu-pressed rounded-full p-3">
               <TrendingUp className="w-6 h-6 text-success" />
             </div>
             <div className="flex-1">
@@ -138,7 +138,7 @@ const Dashboard = () => {
                 We'll notify you when to leave for your 17:30 bus
               </p>
             </div>
-            <button className="glass-subtle rounded-xl px-6 py-3 font-medium hover:glass transition-all">
+            <button className="neu-flat rounded-xl px-6 py-3 font-medium hover:neu-pressed transition-all">
               Configure
             </button>
           </div>

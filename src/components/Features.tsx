@@ -56,10 +56,10 @@ const Features = () => {
           {features.map((feature, index) => (
             <div
               key={index}
-              className="glass-card hover:glass-strong group cursor-pointer"
+              className="neu-card hover:neu-float group cursor-pointer"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
-              <div className={`glass-subtle rounded-2xl p-4 w-fit mb-4 ${feature.color}`}>
+              <div className={`neu-pressed rounded-2xl p-4 w-fit mb-4 ${feature.color}`}>
                 <feature.icon className="w-8 h-8" />
               </div>
               
@@ -75,14 +75,14 @@ const Features = () => {
         </div>
 
         {/* CTA Section */}
-        <div className="mt-16 glass-card rounded-3xl p-8 md:p-12 text-center">
+        <div className="mt-16 neu-float rounded-3xl p-8 md:p-12 text-center">
           <h3 className="text-2xl md:text-4xl font-bold mb-4">
             Ready to Transform Your Commute?
           </h3>
           <p className="text-lg text-muted-foreground mb-8">
             Join thousands of Iași residents who never miss their bus
           </p>
-          <button className="glass-button bg-gradient-to-r from-primary to-accent text-white text-lg px-8 hover:scale-105">
+          <button className="neu-button bg-gradient-to-r from-primary to-accent text-white border-0 text-lg px-8">
             Download App
           </button>
         </div>
