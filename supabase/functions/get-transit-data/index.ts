@@ -26,6 +26,8 @@ serve(async (req) => {
     let stopsData = [];
     let routesData = [];
     let shapesData = [];
+    let tripsData = [];
+    let stopTimesData = [];
 
     const headers = {
       'X-API-KEY': TRANSIT_API_KEY || '',
@@ -167,6 +169,56 @@ serve(async (req) => {
       console.error('❌ Shapes fetch error:', errorMessage);
     }
 
+    // Fetch trips
+    try {
+      console.log('🚂 Step 6: Fetching trips...');
+      const tripsResponse = await fetch(
+        `${TRANSIT_API_BASE_URL}/trips`,
+        { headers }
+      );
+
+      console.log('🚂 Trips response status:', tripsResponse.status);
+      
+      if (tripsResponse.ok) {
+        tripsData = await tripsResponse.json();
+        console.log(`✅ SUCCESS! Fetched ${tripsData.length} trips`);
+        if (tripsData.length > 0) {
+          console.log('🚂 Sample trip:', JSON.stringify(tripsData[0], null, 2));
+        }
+      } else {
+        const errorText = await tripsResponse.text();
+        console.error('❌ Trips error:', errorText);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Trips fetch error:', errorMessage);
+    }
+
+    // Fetch stop times
+    try {
+      console.log('⏰ Step 7: Fetching stop times...');
+      const stopTimesResponse = await fetch(
+        `${TRANSIT_API_BASE_URL}/stop_times`,
+        { headers }
+      );
+
+      console.log('⏰ Stop times response status:', stopTimesResponse.status);
+      
+      if (stopTimesResponse.ok) {
+        stopTimesData = await stopTimesResponse.json();
+        console.log(`✅ SUCCESS! Fetched ${stopTimesData.length} stop times`);
+        if (stopTimesData.length > 0) {
+          console.log('⏰ Sample stop time:', JSON.stringify(stopTimesData[0], null, 2));
+        }
+      } else {
+        const errorText = await stopTimesResponse.text();
+        console.error('❌ Stop times error:', errorText);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Stop times fetch error:', errorMessage);
+    }
+
     // Format the data
     const formattedVehicles = vehiclesData.map((vehicle: any) => ({
       id: vehicle.id,
@@ -212,11 +264,40 @@ serve(async (req) => {
       shapes: shapesByShapeId[route.shape_id] || [],
     }));
 
+    // Create a map of trip_id to ordered stops
+    const tripStopSequences: Record<string, any[]> = {};
+    stopTimesData.forEach((stopTime: any) => {
+      const tripId = stopTime.trip_id;
+      if (!tripStopSequences[tripId]) {
+        tripStopSequences[tripId] = [];
+      }
+      tripStopSequences[tripId].push({
+        stopId: stopTime.stop_id,
+        stopSequence: stopTime.stop_sequence,
+        arrivalTime: stopTime.arrival_time,
+        departureTime: stopTime.departure_time,
+      });
+    });
+
+    // Sort each trip's stops by sequence
+    Object.keys(tripStopSequences).forEach(tripId => {
+      tripStopSequences[tripId].sort((a, b) => a.stopSequence - b.stopSequence);
+    });
+
+    // Create a map of route_id to trip_id for active vehicles
+    const routeToTripMap: Record<string, string> = {};
+    tripsData.forEach((trip: any) => {
+      routeToTripMap[trip.route_id] = trip.trip_id;
+    });
+
     return new Response(
       JSON.stringify({
         vehicles: formattedVehicles,
         stops: formattedStops,
         routes: routesWithShapes,
+        trips: tripsData,
+        tripStopSequences,
+        routeToTripMap,
         timestamp: new Date().toISOString(),
       }),
       {
