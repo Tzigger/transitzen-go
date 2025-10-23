@@ -40,6 +40,10 @@ const CreateJourney = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [originSearchQuery, setOriginSearchQuery] = useState("");
+  const [originSearchResults, setOriginSearchResults] = useState<any[]>([]);
+  const [showOriginResults, setShowOriginResults] = useState(false);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
   const [arrivalTime, setArrivalTime] = useState("");
   const [date, setDate] = useState("");
   const [recurringDays, setRecurringDays] = useState<number[]>([]);
@@ -174,6 +178,51 @@ const CreateJourney = () => {
       getCurrentLocation();
     }
   }, [useCurrentLocation]);
+
+  const handleOriginSearch = async (query: string) => {
+    if (!query.trim() || query.length < 3) {
+      setOriginSearchResults([]);
+      setShowOriginResults(false);
+      return;
+    }
+
+    setIsSearchingOrigin(true);
+    setShowOriginResults(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('search-places', {
+        body: {
+          query,
+          location: USER_LOCATION,
+        },
+      });
+
+      if (error) {
+        console.error('Error from search-places:', error);
+        throw error;
+      }
+
+      setOriginSearchResults(data.results || []);
+    } catch (error) {
+      console.error('Error searching places:', error);
+      setOriginSearchResults([]);
+    } finally {
+      setIsSearchingOrigin(false);
+    }
+  };
+
+  const handleSelectOriginPlace = (place: any) => {
+    setOriginSearchQuery(place.name);
+    setOrigin(place.address);
+    setOriginCoords(place.location);
+    setShowOriginResults(false);
+    setOriginSearchResults([]);
+    
+    // Auto-calculate route if we have both origin and destination
+    if (destination && destinationCoords && date && arrivalTime) {
+      calculateRoute();
+    }
+  };
 
   const handleSearch = async (query: string) => {
     if (!query.trim() || query.length < 3) {
@@ -521,6 +570,80 @@ const CreateJourney = () => {
               className="data-[state=checked]:bg-primary" 
             />
           </div>
+
+          {/* Manual origin search when toggle is off */}
+          {!useCurrentLocation && (
+            <div className="space-y-2 relative">
+              <Label htmlFor="origin" className="text-muted-foreground text-sm">De unde pleci?</Label>
+              <div className="relative">
+                <Input 
+                  id="origin"
+                  placeholder="Caută adresă de plecare..."
+                  value={originSearchQuery}
+                  onChange={(e) => {
+                    setOriginSearchQuery(e.target.value);
+                    handleOriginSearch(e.target.value);
+                  }}
+                  className="h-14 glass border-white/20 text-foreground placeholder:text-muted-foreground rounded-2xl pr-10"
+                />
+                {isSearchingOrigin && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              {/* Origin Search Results */}
+              {showOriginResults && originSearchResults.length > 0 && (
+                <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl max-h-80 overflow-y-auto z-[100] bg-background/95 border border-primary/30">
+                  {originSearchResults.map((result, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleSelectOriginPlace(result)}
+                      className="w-full text-left px-4 py-3 hover:bg-primary/20 transition-colors border-b border-white/5 last:border-0 first:rounded-t-2xl last:rounded-b-2xl"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-1">
+                          <span className="text-lg">📍</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-foreground text-sm truncate">{result.name}</p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{result.address}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* No results for origin */}
+              {showOriginResults && originSearchQuery.length >= 3 && originSearchResults.length === 0 && !isSearchingOrigin && (
+                <div className="absolute top-full mt-2 left-0 right-0 glass-card backdrop-blur-xl rounded-2xl shadow-2xl z-[100] bg-background/95 border border-primary/30 px-4 py-3">
+                  <p className="text-sm text-muted-foreground text-center">Nu s-au găsit rezultate</p>
+                </div>
+              )}
+
+              {/* Selected origin display */}
+              {origin && !useCurrentLocation && (
+                <div className="glass p-4 rounded-2xl border border-primary/30 bg-primary/5">
+                  <div className="flex items-center gap-2">
+                    <Navigation className="w-4 h-4 text-primary flex-shrink-0" />
+                    <p className="text-sm text-foreground flex-1">{origin}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrigin("");
+                        setOriginSearchQuery("");
+                      }}
+                      className="text-muted-foreground hover:text-foreground text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Destination */}
