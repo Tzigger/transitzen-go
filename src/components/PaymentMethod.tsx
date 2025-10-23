@@ -11,11 +11,13 @@ type PaymentMethodType = "card" | "apple-pay" | "google-pay" | "paypal" | "klarn
 
 interface PaymentMethodProps {
   ticketPrice: number;
+  ticketType: "simple" | "day" | "month";
+  ticketTypeName: string;
   onPaymentSuccess: (ticketId: string) => void;
   onBack: () => void;
 }
 
-const PaymentMethod = ({ ticketPrice, onPaymentSuccess, onBack }: PaymentMethodProps) => {
+const PaymentMethod = ({ ticketPrice, ticketType, ticketTypeName, onPaymentSuccess, onBack }: PaymentMethodProps) => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("card");
   const [cardNumber, setCardNumber] = useState("");
   const [cardName, setCardName] = useState("");
@@ -107,7 +109,24 @@ const PaymentMethod = ({ ticketPrice, onPaymentSuccess, onBack }: PaymentMethodP
     try {
       // Generate ticket ID
       const ticketId = `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours from now
+      
+      // Calculate expiry time based on ticket type
+      let expiryMilliseconds: number;
+      switch (ticketType) {
+        case "simple":
+          expiryMilliseconds = 2 * 60 * 60 * 1000; // 2 hours
+          break;
+        case "day":
+          expiryMilliseconds = 24 * 60 * 60 * 1000; // 24 hours
+          break;
+        case "month":
+          expiryMilliseconds = 30 * 24 * 60 * 60 * 1000; // 30 days
+          break;
+        default:
+          expiryMilliseconds = 2 * 60 * 60 * 1000; // Default to 2 hours
+      }
+      
+      const expiresAt = new Date(Date.now() + expiryMilliseconds);
 
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -132,10 +151,10 @@ const PaymentMethod = ({ ticketPrice, onPaymentSuccess, onBack }: PaymentMethodP
       // Save ticket to database
       const { error: ticketError } = await supabase
         .from("tickets")
-        .insert({
+        .insert([{
           user_id: user.id,
           ticket_id: ticketId,
-          ticket_type: paymentMethod === "card" ? "simple" : "simple", // You can map this based on ticketPrice
+          ticket_type: ticketType,
           price: ticketPrice,
           payment_status: "completed",
           payment_method: paymentMethod,
@@ -145,7 +164,7 @@ const PaymentMethod = ({ ticketPrice, onPaymentSuccess, onBack }: PaymentMethodP
             price: ticketPrice,
             expiryTime: expiresAt.toISOString(),
           },
-        });
+        }]);
 
       if (ticketError) {
         console.error("Error saving ticket:", ticketError);
@@ -166,7 +185,7 @@ const PaymentMethod = ({ ticketPrice, onPaymentSuccess, onBack }: PaymentMethodP
               email: profile.email,
               firstName: profile.first_name || "Utilizator",
               ticketId,
-              ticketType: "Bilet simplu", // Map based on actual ticket type
+              ticketType: ticketTypeName,
               price: ticketPrice,
               expiresAt: expiresAt.toISOString(),
             },

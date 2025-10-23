@@ -12,7 +12,7 @@ import PaymentMethod from "./PaymentMethod";
 import TicketQRCode from "./TicketQRCode";
 
 type TicketType = {
-  id: string;
+  id: "simple" | "day" | "month";
   name: string;
   price: number;
 };
@@ -57,6 +57,8 @@ const TicketSelector = () => {
     return (
       <PaymentMethod
         ticketPrice={selectedTicketData.price}
+        ticketType={selectedTicketData.id}
+        ticketTypeName={selectedTicketData.name}
         onPaymentSuccess={handlePaymentSuccess}
         onBack={handleBackToSelect}
       />
