@@ -382,11 +382,66 @@ const Map = forwardRef<MapRef, MapProps>(({
             rotationAngle: vehicle.bearing || 0,
           }).addTo(map.current!);
 
-          // Add click event to show vehicle details
           marker.on('click', () => {
             // Find route info for this vehicle - vehicle has routeId from formatting
             const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
-            setSelectedVehicle({ ...vehicle, routeInfo });
+            
+            // Find trip for this vehicle's route
+            const tripId = transitData.routeToTripMap?.[vehicle.routeId];
+            let nextStopName = 'Necunoscut';
+            
+            if (tripId && transitData.tripStopSequences?.[tripId] && routeInfo?.shapes) {
+              // Get stop sequence for this trip
+              const stopSequence = transitData.tripStopSequences[tripId];
+              
+              // Find closest shape point to vehicle
+              let closestShapeIdx = 0;
+              let minDist = Infinity;
+              
+              routeInfo.shapes.forEach((point: any, idx: number) => {
+                const dist = calculateDistance(
+                  vehicle.latitude,
+                  vehicle.longitude,
+                  point.lat,
+                  point.lon
+                );
+                if (dist < minDist) {
+                  minDist = dist;
+                  closestShapeIdx = idx;
+                }
+              });
+              
+              // Find the next stop after current vehicle position
+              for (const stopInSequence of stopSequence) {
+                const stop = transitData.stops?.find((s: any) => s.id === stopInSequence.stopId);
+                if (!stop) continue;
+                
+                // Find closest shape point to this stop
+                let closestStopIdx = 0;
+                let minStopDist = Infinity;
+                
+                routeInfo.shapes.forEach((point: any, idx: number) => {
+                  const dist = calculateDistance(
+                    stop.latitude,
+                    stop.longitude,
+                    point.lat,
+                    point.lon
+                  );
+                  if (dist < minStopDist) {
+                    minStopDist = dist;
+                    closestStopIdx = idx;
+                  }
+                });
+                
+                // If this stop is ahead of the vehicle, it's the next stop
+                if (closestStopIdx > closestShapeIdx) {
+                  nextStopName = stop.name;
+                  break;
+                }
+              }
+            }
+            
+            setSelectedVehicle({ ...vehicle, routeInfo, next_stop_name: nextStopName });
             setIsVehicleDialogOpen(true);
           });
 
