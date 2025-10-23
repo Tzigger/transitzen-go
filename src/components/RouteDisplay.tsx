@@ -26,10 +26,11 @@ type RouteOption = {
 interface RouteDisplayProps {
   routes: RouteOption[];
   onSelectRoute: (route: RouteOption) => void;
+  onConfirmRoute: () => void;
   selectedRoute?: RouteOption | null;
 }
 
-const RouteDisplay = ({ routes, onSelectRoute, selectedRoute }: RouteDisplayProps) => {
+const RouteDisplay = ({ routes, onSelectRoute, onConfirmRoute, selectedRoute }: RouteDisplayProps) => {
   if (!routes || routes.length === 0) {
     return null;
   }
@@ -176,7 +177,7 @@ const RouteDisplay = ({ routes, onSelectRoute, selectedRoute }: RouteDisplayProp
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSelectRoute(route);
+                  onConfirmRoute();
                 }}
                 className="w-full bg-primary hover:bg-primary/90 rounded-xl h-12 text-base font-semibold"
               >

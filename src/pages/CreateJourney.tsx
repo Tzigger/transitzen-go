@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ const USER_LOCATION = { lat: 47.1585, lng: 27.6014 };
 const CreateJourney = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const notificationsRef = useRef<HTMLDivElement>(null);
   const [origin, setOrigin] = useState("");
   const [originCoords, setOriginCoords] = useState(USER_LOCATION);
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
@@ -176,6 +177,20 @@ const CreateJourney = () => {
         ? prev.filter(d => d !== dayIndex)
         : [...prev, dayIndex]
     );
+  };
+
+  const handleSelectRoute = (route: any) => {
+    setSelectedRoute(route);
+  };
+
+  const handleConfirmRoute = () => {
+    // Scroll to notifications section
+    setTimeout(() => {
+      notificationsRef.current?.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+      });
+    }, 100);
   };
 
   const handleSaveJourney = async () => {
@@ -448,7 +463,8 @@ const CreateJourney = () => {
                     calculateRoute();
                   }
                 }}
-                className="h-16 glass border-white/20 text-foreground text-3xl font-bold rounded-2xl"
+                lang="ro-RO"
+                className="h-16 glass border-white/20 text-foreground text-3xl font-bold rounded-2xl [&::-webkit-calendar-picker-indicator]:invert-[0.8]"
               />
             </div>
 
@@ -490,7 +506,8 @@ const CreateJourney = () => {
           <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
             <RouteDisplay
               routes={routes}
-              onSelectRoute={setSelectedRoute}
+              onSelectRoute={handleSelectRoute}
+              onConfirmRoute={handleConfirmRoute}
               selectedRoute={selectedRoute}
             />
           </div>
@@ -498,7 +515,7 @@ const CreateJourney = () => {
 
         {/* Notifications */}
         {selectedRoute && (
-          <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+          <div ref={notificationsRef} className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center">
               <Bell className="w-6 h-6 text-primary" />
