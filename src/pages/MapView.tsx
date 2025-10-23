@@ -131,6 +131,9 @@ const MapView = () => {
         );
 
         const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
+        
+        // Filter out vehicles without a known route
+        if (!routeInfo || !routeInfo.route_short_name) return null;
         const vehicleType = vehicle.vehicle_type === 0 ? 'tram' : 'bus';
         const vehicleColor = vehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
 
@@ -178,7 +181,7 @@ const MapView = () => {
 
         return {
           id: vehicle.id,
-          number: vehicle.label || routeInfo?.route_short_name || '?',
+          number: routeInfo?.route_short_name || vehicle.label || '?',
           type: vehicleType === 'tram' ? 'Tramvai' : 'Autobuz',
           vehicleType,
           distance: `${Math.round(distance * 1000)}m`,
@@ -192,6 +195,7 @@ const MapView = () => {
           nextStationDistance,
         };
       })
+      .filter(Boolean) // Remove vehicles without known routes
       .sort((a: any, b: any) => {
         // Sort by distance
         const distA = parseFloat(a.distance);
@@ -397,7 +401,7 @@ const MapView = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-semibold text-foreground text-lg">
-                          {vehicle.type} {vehicle.number}
+                          {vehicle.emoji} {vehicle.type} {vehicle.number}
                         </p>
                         {vehicle.wheelchair && (
                           <Badge variant="outline" className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 border-green-500/30 rounded-full">

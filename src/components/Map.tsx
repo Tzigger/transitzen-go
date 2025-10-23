@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle, memo } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle, memo, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/drawer';
 import { StopArrivalsDrawer } from './StopArrivalsDrawer';
 import { useTheme } from 'next-themes';
-import { useQuery } from 'convex/react';
+import { useQuery, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
 // Fix for default markers
@@ -69,9 +69,12 @@ const Map = forwardRef<MapRef, MapProps>(({
   const vehicleClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
   const vehicleMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const stopMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
+  const userLocationMarker = useRef<L.Marker | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   
-  // Get transit data from Convex database (auto-updates via subscription)
-  const transitData = useQuery(api.transit.getTransitData);
+  // Use polling instead of WebSocket subscription to prevent performance issues
+  const [transitData, setTransitData] = useState<any>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mapBoundsRef = useRef<L.LatLngBounds | null>(null);
@@ -83,6 +86,7 @@ const Map = forwardRef<MapRef, MapProps>(({
   const selectedRouteLayer = useRef<L.Polyline | null>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [filteredRoutes, setFilteredRoutes] = useState<string[]>([]); // Multiple route IDs
+  const filteredRouteLayers = useRef<L.Polyline[]>([]); // Store multiple route polylines
   
   // Generate unique colors for multiple selected routes
   const routeColorPalette = [
@@ -166,9 +170,10 @@ const Map = forwardRef<MapRef, MapProps>(({
 
       console.log('🗺️ Route drawn successfully');
 
-      // Fit map to route bounds
+      // Fit map to route bounds only once - user can pan/zoom after
       map.current.fitBounds(selectedRouteLayer.current.getBounds(), {
         padding: [50, 50],
+        maxZoom: 15, // Don't zoom in too much
       });
     } else {
       console.log('🗺️ No shapes available for route');
@@ -181,6 +186,67 @@ const Map = forwardRef<MapRef, MapProps>(({
       }
     };
   }, [selectedRoute]);
+
+  // Draw filtered routes on map
+  useEffect(() => {
+    if (!map.current || !transitData?.routes) return;
+
+    // Clear existing filtered route layers
+    filteredRouteLayers.current.forEach(layer => {
+      if (map.current) {
+        map.current.removeLayer(layer);
+      }
+    });
+    filteredRouteLayers.current = [];
+
+    // If no filters or selectedRoute exists, don't draw anything
+    if (filteredRoutes.length === 0 || selectedRoute) {
+      return;
+    }
+
+    console.log('🗺️ Drawing filtered routes:', filteredRoutes);
+
+    // Draw each filtered route
+    filteredRoutes.forEach((routeId, index) => {
+      const route = transitData.routes.find((r: any) => r.route_id === routeId);
+      
+      if (route?.shapes && route.shapes.length > 0 && map.current) {
+        // Use color from palette for multiple routes
+        const color = routeColorPalette[index % routeColorPalette.length];
+        
+        const polyline = L.polyline(
+          route.shapes.map((point: any) => [point.lat, point.lon]),
+          {
+            color: color,
+            weight: 5,
+            opacity: 0.8,
+          }
+        ).addTo(map.current);
+
+        filteredRouteLayers.current.push(polyline);
+        console.log(`🗺️ Drew route ${route.route_short_name} with color ${color}`);
+      }
+    });
+
+    // Fit map to show all filtered routes only once when filter changes
+    // Don't lock the map - user can still pan/zoom after initial fit
+    if (filteredRouteLayers.current.length > 0 && map.current) {
+      const group = L.featureGroup(filteredRouteLayers.current);
+      map.current.fitBounds(group.getBounds(), { 
+        padding: [50, 50],
+        maxZoom: 15, // Don't zoom in too much
+      });
+    }
+
+    return () => {
+      filteredRouteLayers.current.forEach(layer => {
+        if (map.current) {
+          map.current.removeLayer(layer);
+        }
+      });
+      filteredRouteLayers.current = [];
+    };
+  }, [filteredRoutes, transitData, selectedRoute, routeColorPalette]);
 
   // Note: Vehicle route drawing removed - routes shown only from filters or stop selection
 
@@ -247,47 +313,8 @@ const Map = forwardRef<MapRef, MapProps>(({
     
     map.current.addLayer(vehicleClusterGroup.current);
 
-    // Add custom user location marker
-    const userIcon = L.divIcon({
-      className: 'custom-user-marker',
-      html: `
-        <div class="relative">
-          <div class="absolute w-8 h-8 rounded-full bg-primary/30 animate-ping"></div>
-          <div class="relative w-8 h-8 rounded-full glass-strong flex items-center justify-center border-2 border-primary">
-            <div class="w-3 h-3 rounded-full bg-primary"></div>
-          </div>
-        </div>
-      `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-    });
-
-    L.marker([center.lat, center.lng], { icon: userIcon }).addTo(map.current);
-
-    // Add map move and zoom event listeners for viewport updates
-    let moveTimeout: NodeJS.Timeout;
-    let zoomTimeout: NodeJS.Timeout;
-    
-    map.current.on('moveend', () => {
-      clearTimeout(moveTimeout);
-      moveTimeout = setTimeout(() => {
-        updateMapBounds();
-        updateMarkers();
-      }, 300);
-    });
-
-    map.current.on('zoomend', () => {
-      clearTimeout(zoomTimeout);
-      zoomTimeout = setTimeout(() => {
-        updateMapBounds();
-        updateMarkers();
-      }, 400); // Longer delay for zoom to allow animation to complete
-    });
-
     // Cleanup
     return () => {
-      clearTimeout(moveTimeout);
-      clearTimeout(zoomTimeout);
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
       }
@@ -303,6 +330,34 @@ const Map = forwardRef<MapRef, MapProps>(({
       map.current = null;
     };
   }, [center.lat, center.lng, zoom, theme]);
+
+  // Poll transit data every 30 seconds (like Supabase implementation)
+  const fetchTransitDataAction = useAction(api.actions.fetchTransitData);
+  
+  // Function to fetch transit data (can be called manually or by polling)
+  const fetchTransitData = useCallback(async () => {
+    try {
+      const data = await fetchTransitDataAction();
+      setTransitData(data);
+      console.log('🔄 Transit data fetched:', data?.vehicles?.length || 0, 'vehicles');
+    } catch (error) {
+      console.error('❌ Error fetching transit data:', error);
+    }
+  }, [fetchTransitDataAction]);
+  
+  useEffect(() => {
+    // Initial fetch
+    fetchTransitData();
+
+    // Poll every 30 seconds
+    pollIntervalRef.current = setInterval(fetchTransitData, 30000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [fetchTransitData]);
 
   // Update tile layer when theme changes
   useEffect(() => {
@@ -322,17 +377,78 @@ const Map = forwardRef<MapRef, MapProps>(({
     }).addTo(map.current);
   }, [theme]);
 
-  // Debounced update of map bounds
-  const updateMapBounds = useCallback(() => {
-    if (map.current) {
-      mapBoundsRef.current = map.current.getBounds();
+  // Track user location with geolocation
+  useEffect(() => {
+    if (!map.current) return;
+
+    // Check if geolocation is available
+    if (!navigator.geolocation) {
+      console.log('❌ Geolocation not supported');
+      return;
     }
+
+    // Request user location
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const newLocation = { lat: latitude, lng: longitude };
+        
+        setUserLocation(newLocation);
+
+        // Create or update user location marker
+        if (!userLocationMarker.current && map.current) {
+          const userIcon = L.divIcon({
+            className: 'custom-user-marker',
+            html: `
+              <div class="relative">
+                <div class="absolute w-8 h-8 rounded-full bg-primary/30 animate-ping"></div>
+                <div class="relative w-8 h-8 rounded-full glass-strong flex items-center justify-center border-2 border-primary">
+                  <div class="w-3 h-3 rounded-full bg-primary"></div>
+                </div>
+              </div>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+
+          userLocationMarker.current = L.marker([latitude, longitude], { 
+            icon: userIcon,
+            zIndexOffset: 1000, // Keep user marker on top
+          }).addTo(map.current);
+
+          console.log('📍 User location marker created:', newLocation);
+        } else if (userLocationMarker.current) {
+          // Update existing marker position
+          userLocationMarker.current.setLatLng([latitude, longitude]);
+          console.log('📍 User location updated:', newLocation);
+        }
+      },
+      (error) => {
+        console.log('❌ Geolocation error:', error.message);
+        // Don't show marker if location cannot be obtained
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
+      }
+    );
+
+    // Cleanup function
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      if (userLocationMarker.current && map.current) {
+        map.current.removeLayer(userLocationMarker.current);
+        userLocationMarker.current = null;
+      }
+    };
   }, []);
 
   // Check if a point is within current viewport
   const isInViewport = useCallback((lat: number, lng: number): boolean => {
-    if (!mapBoundsRef.current) return true;
-    return mapBoundsRef.current.contains([lat, lng]);
+    if (!map.current) return true;
+    const bounds = map.current.getBounds();
+    return bounds.contains([lat, lng]);
   }, []);
 
   // Optimized marker update with viewport filtering
@@ -349,14 +465,20 @@ const Map = forwardRef<MapRef, MapProps>(({
 
     const doUpdate = () => {
       try {
+        // Safety check: ensure transitData exists and has expected structure
+        if (!transitData || typeof transitData !== 'object') {
+          console.log('⚠️ Transit data not ready or invalid');
+          return;
+        }
+
         const currentVehicleIds = new Set<string>();
         const currentStopIds = new Set<string>();
 
-        // Get current map bounds and zoom
-        updateMapBounds();
+        // Get current zoom level
         const currentZoom = map.current?.getZoom() || 13;
 
-        // Filter vehicles: by route if selected, by viewport always, and by vehicle type
+        // Filter vehicles: by route if selected and by vehicle type
+        // No viewport filtering needed - already done server-side!
         const activeRouteFilter = selectedRoute ? selectedRoute.route_id : null;
         const hasManualFilters = filteredRoutes.length > 0;
         
@@ -364,7 +486,7 @@ const Map = forwardRef<MapRef, MapProps>(({
         
         let filteredVehicles = transitData.vehicles?.filter((v: any) => {
           try {
-            // Validate coordinates first
+            // Validate coordinates
             if (!v.latitude || !v.longitude || 
                 typeof v.latitude !== 'number' || 
                 typeof v.longitude !== 'number' ||
@@ -372,30 +494,23 @@ const Map = forwardRef<MapRef, MapProps>(({
               return false;
             }
 
-            // CRITICAL: Only show vehicles that have a valid route with shapes
+            // Check if vehicle has valid route with shapes
             const vehicleRoute = transitData.routes?.find((r: any) => r.route_id === v.routeId);
             if (!vehicleRoute || !vehicleRoute.shapes || vehicleRoute.shapes.length === 0) {
-              return false; // Skip vehicles without valid routes/shapes
-            }
-
-            // Filter by viewport - only show vehicles in current view
-            if (!isInViewport(v.latitude, v.longitude)) {
               return false;
             }
 
             // Filter by vehicle type (0=tram, 1=bus)
             const vehicleType = v.vehicle_type === 0 ? 'tram' : 'bus';
-            const typeMatch = selectedVehicleTypes.includes(vehicleType);
-            
-            if (!typeMatch) {
+            if (!selectedVehicleTypes.includes(vehicleType)) {
               return false;
             }
             
-            // If a route is selected from stop drawer, show only that route
+            // If a route is selected, show only that route
             if (activeRouteFilter) {
               return v.routeId === activeRouteFilter;
             }
-            // If manual filters are active, show only filtered routes
+            // If manual filters active, show only filtered routes
             if (hasManualFilters) {
               return filteredRoutes.includes(v.routeId?.toString());
             }
@@ -407,7 +522,7 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
         }) || [];
 
-        // Limit number of vehicles at low zoom levels to prevent overload
+        // Limit number of vehicles at low zoom levels
         const maxVehicles = currentZoom < 14 ? 50 : currentZoom < 16 ? 100 : 200;
         if (filteredVehicles.length > maxVehicles) {
           // Sort by distance from center and take closest ones
@@ -423,7 +538,8 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
         }
         
-        console.log(`🚍 Filtered vehicles: ${filteredVehicles.length} out of ${transitData.vehicles?.length || 0} (zoom: ${currentZoom}, max: ${maxVehicles})`);
+        console.log(`🚍 Displaying ${filteredVehicles.length} vehicles from viewport query (zoom: ${currentZoom})`);
+
 
         // Process vehicles with additional safety checks
         filteredVehicles?.forEach((vehicle: any) => {
@@ -515,17 +631,16 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
       });
 
-      // Filter stops by viewport and selected route
-      let nearbyStops = transitData.stops
-        ?.filter((stop: any) => {
-          if (!stop.latitude || !stop.longitude || 
-              typeof stop.latitude !== 'number' || 
-              typeof stop.longitude !== 'number') {
-            return false;
-          }
-
-          return isInViewport(stop.latitude, stop.longitude);
-        }) || [];
+      // Filter stops - already in viewport from server-side query
+      // Just apply route filtering if needed
+      let nearbyStops = transitData.stops?.filter((stop: any) => {
+        if (!stop.latitude || !stop.longitude || 
+            typeof stop.latitude !== 'number' || 
+            typeof stop.longitude !== 'number') {
+          return false;
+        }
+        return true;
+      }) || [];
 
       // If a route is selected from stop drawer or manual filters, only show stops for those routes
       const activeFilters = selectedRoute 
@@ -553,10 +668,16 @@ const Map = forwardRef<MapRef, MapProps>(({
         nearbyStops = nearbyStops.filter((stop: any) => routeStopIds.has(stop.id));
       }
       
-      nearbyStops = nearbyStops.slice(0, 50); // Show more stops when route is selected
+      // Limit stops based on whether we have active filters
+      // If filters are active, show more stops (they are filtered by route already)
+      const maxStops = activeFilters ? 100 : 50;
+      nearbyStops = nearbyStops.slice(0, maxStops);
 
-      // Only render stops if there are 20 or fewer to avoid clutter at small zoom
-      if (nearbyStops.length <= 20) {
+      // Render stops - if filters are active, always show them
+      // Otherwise only show if there are 20 or fewer to avoid clutter at small zoom
+      const shouldRenderStops = activeFilters || nearbyStops.length <= 20;
+      
+      if (shouldRenderStops) {
         nearbyStops.forEach((stop: any) => {
         const stopId = stop.id || `${stop.code}-${stop.latitude}-${stop.longitude}`;
         currentStopIds.add(stopId);
@@ -610,6 +731,7 @@ const Map = forwardRef<MapRef, MapProps>(({
       });
       } catch (error) {
         console.error('❌ Error updating markers:', error);
+        
         // Clear all markers on error to prevent stuck state
         vehicleMarkersRef.current.forEach((marker) => {
           if (vehicleClusterGroup.current) {
@@ -625,20 +747,18 @@ const Map = forwardRef<MapRef, MapProps>(({
     } else {
       requestAnimationFrame(doUpdate);
     }
-  }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes, getRouteColor, selectedVehicleTypes]);
+  }, [transitData, selectedRoute, isInViewport, filteredRoutes, getRouteColor, selectedVehicleTypes]);
 
   // Update markers when transit data changes
   useEffect(() => {
     updateMarkers();
   }, [updateMarkers]);
 
-  // Force immediate update when vehicle type filter changes
+  // Force immediate fetch and update when filters change
   useEffect(() => {
-    if (transitData) {
-      console.log('🔄 Vehicle type filter changed, forcing immediate update');
-      updateMarkers(true);
-    }
-  }, [selectedVehicleTypes]);
+    console.log('🔄 Filter changed, fetching fresh data immediately');
+    fetchTransitData(); // Fetch fresh data from DB
+  }, [selectedVehicleTypes, filteredRoutes, selectedRoute, fetchTransitData]);
 
   // Calculate route using Google Maps API when destination changes
   useEffect(() => {
@@ -970,6 +1090,7 @@ const Map = forwardRef<MapRef, MapProps>(({
                   ?.slice(0, 100) // Limit to first 100 routes
                   ?.map((route: any) => {
                     const isSelected = filteredRoutes.includes(route.route_id?.toString());
+                    // Tramvaie (route_type === 0) = MOV, Autobuze (route_type === 3) = ALBASTRU
                     const routeColor = isSelected 
                       ? getRouteColor(route.route_id?.toString(), route.route_type)
                       : (route.route_type === 0 ? '#8B5CF6' : '#3B82F6');

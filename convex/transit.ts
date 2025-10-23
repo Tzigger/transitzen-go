@@ -477,3 +477,101 @@ export const getTransitData = query({
     };
   },
 });
+
+// Query to get transit data within viewport bounds (for efficient map rendering)
+export const getTransitDataInViewport = query({
+  args: {
+    minLat: v.number(),
+    maxLat: v.number(),
+    minLng: v.number(),
+    maxLng: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Get all data but filter vehicles and stops by viewport
+    const [allVehicles, allStops, routes, stopTimes, trips] = await Promise.all([
+      ctx.db.query("transitVehicles").collect(),
+      ctx.db.query("transitStops").collect(),
+      ctx.db.query("transitRoutes").collect(),
+      ctx.db.query("transitStopTimes").collect(),
+      ctx.db.query("transitTrips").collect(),
+    ]);
+
+    // Filter vehicles within viewport
+    const vehicles = allVehicles.filter(v => 
+      v.latitude >= args.minLat && 
+      v.latitude <= args.maxLat &&
+      v.longitude >= args.minLng && 
+      v.longitude <= args.maxLng
+    );
+
+    // Filter stops within viewport
+    const stops = allStops.filter(s => 
+      s.stopLat >= args.minLat && 
+      s.stopLat <= args.maxLat &&
+      s.stopLon >= args.minLng && 
+      s.stopLon <= args.maxLng
+    );
+
+    // Get route IDs for visible vehicles
+    const visibleRouteIds = new Set(vehicles.map(v => v.routeId));
+    
+    // Only include routes that have visible vehicles
+    const visibleRoutes = routes.filter(r => visibleRouteIds.has(r.routeId));
+
+    // Format trip stop sequences
+    const tripStopSequences: Record<string, any[]> = {};
+    for (const stopTime of stopTimes) {
+      if (!tripStopSequences[stopTime.tripId]) {
+        tripStopSequences[stopTime.tripId] = [];
+      }
+      tripStopSequences[stopTime.tripId].push({
+        stopId: stopTime.stopId,
+        sequence: stopTime.stopSequence,
+        arrivalTime: stopTime.arrivalTime,
+        departureTime: stopTime.departureTime,
+      });
+    }
+    
+    Object.keys(tripStopSequences).forEach(tripId => {
+      tripStopSequences[tripId].sort((a, b) => a.sequence - b.sequence);
+    });
+
+    // Format route to trip map (only for visible routes)
+    const routeToTripMap: Record<string, string> = {};
+    for (const trip of trips) {
+      if (visibleRouteIds.has(trip.routeId)) {
+        routeToTripMap[trip.routeId] = trip.tripId;
+      }
+    }
+
+    return {
+      vehicles: vehicles.map(v => ({
+        id: v.vehicleId,
+        routeId: v.routeId,
+        label: v.label,
+        latitude: v.latitude,
+        longitude: v.longitude,
+        speed: v.speed,
+        timestamp: v.timestamp,
+        vehicle_type: v.vehicleType,
+        wheelchair_accessible: v.wheelchairAccessible,
+      })),
+      stops: stops.map(s => ({
+        id: s.stopId,
+        name: s.stopName,
+        latitude: s.stopLat,
+        longitude: s.stopLon,
+        code: s.stopCode,
+      })),
+      routes: visibleRoutes.map(r => ({
+        route_id: r.routeId,
+        route_short_name: r.routeShortName,
+        route_long_name: r.routeLongName,
+        shapes: r.shapes,
+      })),
+      routeToTripMap,
+      tripStopSequences,
+      timestamp: new Date().toISOString(),
+    };
+  },
+});

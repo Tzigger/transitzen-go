@@ -1,5 +1,14 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
+import { api } from "./_generated/api";
+
+// Action to fetch transit data (for polling instead of subscription)
+export const fetchTransitData = action({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.runQuery(api.transit.getTransitData);
+  },
+});
 
 // Search for places using OpenStreetMap Nominatim API
 export const searchPlaces = action({
