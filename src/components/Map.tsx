@@ -76,6 +76,41 @@ const Map = forwardRef<MapRef, MapProps>(({
   const selectedRouteLayer = useRef<L.Polyline | null>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [filteredRoutes, setFilteredRoutes] = useState<string[]>([]); // Multiple route IDs
+  
+  // Generate unique colors for multiple selected routes
+  const routeColorPalette = [
+    '#FF6B6B', // Red
+    '#4ECDC4', // Teal
+    '#FFD93D', // Yellow
+    '#6BCF7F', // Green
+    '#A78BFA', // Purple
+    '#FB923C', // Orange
+    '#EC4899', // Pink
+    '#06B6D4', // Cyan
+    '#8B5CF6', // Violet
+    '#3B82F6', // Blue
+    '#EF4444', // Bright Red
+    '#10B981', // Emerald
+  ];
+  
+  const getRouteColor = useCallback((routeId: string, vehicleType: number) => {
+    const allSelectedRoutes = [...filteredRoutes];
+    if (selectedRoute) allSelectedRoutes.push(selectedRoute.route_id.toString());
+    
+    // If only one route selected, use default colors
+    if (allSelectedRoutes.length < 2) {
+      return vehicleType === 0 ? '#8B5CF6' : '#3B82F6';
+    }
+    
+    // Multiple routes - assign unique colors
+    const routeIndex = allSelectedRoutes.indexOf(routeId);
+    if (routeIndex === -1) {
+      // Fallback to default if route not in selection
+      return vehicleType === 0 ? '#8B5CF6' : '#3B82F6';
+    }
+    
+    return routeColorPalette[routeIndex % routeColorPalette.length];
+  }, [filteredRoutes, selectedRoute]);
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
@@ -439,9 +474,8 @@ const Map = forwardRef<MapRef, MapProps>(({
           // Update existing marker position smoothly
           existingMarker.setLatLng([vehicle.latitude, vehicle.longitude]);
         } else {
-          // Create new marker - determine color based on vehicle type
-          // Tramvai = mov (#8B5CF6), Autobuz = albastru (#3B82F6)
-          const vehicleColor = vehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
+          // Create new marker - determine color based on multiple routes selection
+          const vehicleColor = getRouteColor(vehicle.routeId?.toString(), vehicle.vehicle_type);
           const isAccessible = vehicle.wheelchair_accessible === 'WHEELCHAIR_ACCESSIBLE';
           
           const vehicleIcon = L.divIcon({
@@ -717,7 +751,7 @@ const Map = forwardRef<MapRef, MapProps>(({
     } else {
       requestAnimationFrame(doUpdate);
     }
-  }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes]);
+  }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes, getRouteColor]);
 
   // Update markers when transit data changes
   useEffect(() => {
@@ -975,37 +1009,47 @@ const Map = forwardRef<MapRef, MapProps>(({
             </DrawerTitle>
           </DrawerHeader>
           <div id="filter-description" className="px-6 pb-8 space-y-4 max-h-[60vh] overflow-y-auto">
-            {/* Active Route from Stop Selection */}
+            {/* Active Route from Stop Selection - Always show when present */}
             {selectedRoute && (
-              <div className="glass-strong rounded-3xl p-5 border-l-[5px] shadow-lg mb-4" style={{ 
-                borderColor: '#8B5CF6',
-                background: 'linear-gradient(135deg, #8B5CF605, transparent)'
-              }}>
+              <div>
                 <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Rută din Stație</p>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-2xl font-bold text-primary">{selectedRoute.route_short_name}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{selectedRoute.route_long_name}</p>
+                <div className="glass-strong rounded-2xl p-4 border-l-[5px] shadow-lg mb-4" style={{ 
+                  borderColor: getRouteColor(selectedRoute.route_id?.toString(), selectedRoute.route_type),
+                  background: `linear-gradient(135deg, ${getRouteColor(selectedRoute.route_id?.toString(), selectedRoute.route_type)}15, transparent)`
+                }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg"
+                        style={{ background: `linear-gradient(135deg, ${getRouteColor(selectedRoute.route_id?.toString(), selectedRoute.route_type)}dd, ${getRouteColor(selectedRoute.route_id?.toString(), selectedRoute.route_type)}ff)` }}
+                      >
+                        <span className="text-white font-bold text-lg">{selectedRoute.route_short_name}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{selectedRoute.route_short_name}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">{selectedRoute.route_long_name}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedRoute(null);
+                        if (selectedRouteLayer.current && map.current) {
+                          map.current.removeLayer(selectedRouteLayer.current);
+                          selectedRouteLayer.current = null;
+                        }
+                        if (updateTimeoutRef.current) {
+                          clearTimeout(updateTimeoutRef.current);
+                          updateTimeoutRef.current = null;
+                        }
+                        updateMarkers(true);
+                      }}
+                      className="text-destructive hover:scale-110 transition-transform"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSelectedRoute(null);
-                      if (selectedRouteLayer.current && map.current) {
-                        map.current.removeLayer(selectedRouteLayer.current);
-                        selectedRouteLayer.current = null;
-                      }
-                      if (updateTimeoutRef.current) {
-                        clearTimeout(updateTimeoutRef.current);
-                        updateTimeoutRef.current = null;
-                      }
-                      updateMarkers(true);
-                    }}
-                    className="text-destructive hover:scale-110 transition-transform"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             )}
@@ -1044,7 +1088,9 @@ const Map = forwardRef<MapRef, MapProps>(({
                   ?.slice(0, 100) // Limit to first 100 routes
                   ?.map((route: any) => {
                     const isSelected = filteredRoutes.includes(route.route_id?.toString());
-                    const routeColor = route.route_type === 0 ? '#8B5CF6' : '#3B82F6';
+                    const routeColor = isSelected 
+                      ? getRouteColor(route.route_id?.toString(), route.route_type)
+                      : (route.route_type === 0 ? '#8B5CF6' : '#3B82F6');
                     
                     return (
                       <button
