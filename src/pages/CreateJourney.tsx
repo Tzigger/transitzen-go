@@ -3,18 +3,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, MapPin, Clock, Bell, Save } from "lucide-react";
+import { ArrowLeft, MapPin, Clock, Bell, Save, Navigation } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import RouteDisplay from "@/components/RouteDisplay";
 
 const USER_LOCATION = { lat: 47.1585, lng: 27.6014 };
 
 const CreateJourney = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [origin, setOrigin] = useState("");
+  const [originCoords, setOriginCoords] = useState(USER_LOCATION);
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [destination, setDestination] = useState("");
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
@@ -27,6 +32,9 @@ const CreateJourney = () => {
   const [notifyCrowding, setNotifyCrowding] = useState(false);
   const [notifyRouteChanges, setNotifyRouteChanges] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [routes, setRoutes] = useState<any[]>([]);
+  const [selectedRoute, setSelectedRoute] = useState<any>(null);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   
   // Swipe to close
   const [touchStart, setTouchStart] = useState(0);
@@ -98,8 +106,68 @@ const CreateJourney = () => {
   const handleSelectPlace = (place: any) => {
     setSearchQuery(place.name);
     setDestination(place.address);
+    setDestinationCoords(place.location);
     setShowResults(false);
     setSearchResults([]);
+    
+    // Auto-calculate route if we have both origin and destination
+    if ((useCurrentLocation || origin) && date && arrivalTime) {
+      calculateRoute(place.location);
+    }
+  };
+
+  const calculateRoute = async (destCoords?: { lat: number; lng: number }) => {
+    const targetCoords = destCoords || destinationCoords;
+    
+    if (!targetCoords || !arrivalTime || !date) {
+      return;
+    }
+
+    setIsCalculatingRoute(true);
+    
+    try {
+      // Convert arrival time to timestamp
+      const arrivalDateTime = new Date(`${date}T${arrivalTime}`);
+      const arrivalTimestamp = Math.floor(arrivalDateTime.getTime() / 1000);
+
+      const { data, error } = await supabase.functions.invoke('plan-route', {
+        body: {
+          origin: originCoords,
+          destination: targetCoords,
+          arrivalTime: arrivalTimestamp,
+        },
+      });
+
+      if (error) {
+        console.error('Error from plan-route:', error);
+        throw error;
+      }
+
+      if (data.routes && data.routes.length > 0) {
+        setRoutes(data.routes);
+        setSelectedRoute(data.routes[0]); // Auto-select first route
+        
+        toast({
+          title: "Rute găsite! 🎉",
+          description: `Am găsit ${data.routes.length} ${data.routes.length === 1 ? 'rută' : 'rute'} pentru tine`,
+        });
+      } else {
+        toast({
+          title: "Nu am găsit rute",
+          description: "Încearcă să modifici locația sau ora",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error calculating route:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut calcula ruta. Te rog încearcă din nou.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCalculatingRoute(false);
+    }
   };
 
   const toggleRecurringDay = (dayIndex: number) => {
@@ -138,6 +206,15 @@ const CreateJourney = () => {
       return;
     }
 
+    if (!selectedRoute) {
+      toast({
+        title: "Eroare",
+        description: "Te rog selectează o rută",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -153,11 +230,26 @@ const CreateJourney = () => {
         return;
       }
 
+      // Calculate departure time from selected route
+      const departureParts = selectedRoute.departureTime.match(/(\d+):(\d+)/);
+      const departureTime = departureParts ? `${departureParts[1]}:${departureParts[2]}` : null;
+
       const { error } = await supabase.from('journeys').insert({
         user_id: user.id,
+        origin: useCurrentLocation ? "Locația curentă" : origin,
+        origin_lat: originCoords.lat,
+        origin_lng: originCoords.lng,
         destination: destination.trim(),
+        destination_lat: destinationCoords?.lat,
+        destination_lng: destinationCoords?.lng,
         arrival_date: date,
         arrival_time: arrivalTime,
+        departure_time: departureTime,
+        estimated_duration: selectedRoute.totalDuration,
+        route_details: {
+          segments: selectedRoute.segments,
+          totalDistance: selectedRoute.totalDistance,
+        },
         recurring_days: recurringDays,
         notify_departure: notifyDeparture,
         notify_delays: notifyDelays,
@@ -169,16 +261,16 @@ const CreateJourney = () => {
       if (error) throw error;
 
       toast({
-        title: "Success!",
-        description: "Alerta ta a fost activată cu succes",
+        title: "Success! 🎉",
+        description: "Călătoria ta a fost planificată cu succes",
       });
 
-      navigate('/journeys');
+      navigate('/history');
     } catch (error) {
       console.error('Error saving journey:', error);
       toast({
         title: "Eroare",
-        description: "Nu am putut salva alerta. Te rog încearcă din nou.",
+        description: "Nu am putut salva călătoria. Te rog încearcă din nou.",
         variant: "destructive",
       });
     } finally {
@@ -217,6 +309,30 @@ const CreateJourney = () => {
 
       {/* Form */}
       <div className="px-4 space-y-6 animate-slide-up max-w-md mx-auto">
+        {/* Origin */}
+        <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center">
+              <Navigation className="w-6 h-6 text-primary" />
+            </div>
+            <h2 className="text-lg font-semibold text-foreground">De unde pleci?</h2>
+          </div>
+
+          <div className="glass p-5 rounded-2xl border border-white/10 flex items-center justify-between">
+            <div className="flex-1">
+              <p className="font-medium text-foreground mb-1">Folosește locația curentă</p>
+              <p className="text-sm text-muted-foreground">
+                Iași, România
+              </p>
+            </div>
+            <Switch 
+              checked={useCurrentLocation}
+              onCheckedChange={setUseCurrentLocation}
+              className="data-[state=checked]:bg-primary" 
+            />
+          </div>
+        </div>
+
         {/* Destination */}
         <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl relative z-50">
           <div className="flex items-center gap-3 mb-4">
@@ -320,15 +436,32 @@ const CreateJourney = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="time" className="text-muted-foreground text-sm">I want to arrive at</Label>
+              <Label htmlFor="time" className="text-muted-foreground text-sm">Vreau să ajung la ora</Label>
               <Input 
                 id="time"
                 type="time"
                 value={arrivalTime}
-                onChange={(e) => setArrivalTime(e.target.value)}
+                onChange={(e) => {
+                  setArrivalTime(e.target.value);
+                  // Recalculate route when time changes
+                  if (destinationCoords && date) {
+                    calculateRoute();
+                  }
+                }}
                 className="h-16 glass border-white/20 text-foreground text-3xl font-bold rounded-2xl"
               />
             </div>
+
+            {/* Calculate Route Button */}
+            {destination && date && arrivalTime && !routes.length && (
+              <Button
+                onClick={() => calculateRoute()}
+                disabled={isCalculatingRoute}
+                className="w-full h-14 bg-primary hover:bg-primary/90 rounded-2xl"
+              >
+                {isCalculatingRoute ? "Se calculează..." : "Calculează ruta"}
+              </Button>
+            )}
           </div>
 
           <div className="glass p-5 rounded-2xl border border-white/10">
@@ -352,8 +485,20 @@ const CreateJourney = () => {
           </div>
         </div>
 
+        {/* Route Options */}
+        {routes.length > 0 && (
+          <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+            <RouteDisplay
+              routes={routes}
+              onSelectRoute={setSelectedRoute}
+              selectedRoute={selectedRoute}
+            />
+          </div>
+        )}
+
         {/* Notifications */}
-        <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+        {selectedRoute && (
+          <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center">
               <Bell className="w-6 h-6 text-primary" />
@@ -424,17 +569,19 @@ const CreateJourney = () => {
             </div>
           </div>
         </div>
-
+        )}
 
         {/* Save Button */}
-        <Button 
+        {selectedRoute && (
+          <Button
           onClick={handleSaveJourney}
           disabled={isSaving}
           className="w-full h-16 text-lg font-semibold gradient-primary shadow-2xl rounded-full mb-4 hover:shadow-xl transition-all hover:scale-[1.02] disabled:opacity-50"
         >
           <Save className="w-5 h-5 mr-2" />
-          {isSaving ? 'Se salvează...' : 'Activează alertă'}
+          {isSaving ? 'Se salvează...' : 'Planifică călătoria'}
         </Button>
+        )}
       </div>
 
       {/* Bottom fade for nav bar */}

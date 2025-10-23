@@ -19,14 +19,22 @@ export type Database = {
           arrival_date: string
           arrival_time: string
           created_at: string
+          departure_time: string | null
           destination: string
+          destination_lat: number | null
+          destination_lng: number | null
+          estimated_duration: number | null
           id: string
           is_active: boolean
           notify_crowding: boolean
           notify_delays: boolean
           notify_departure: boolean
           notify_route_changes: boolean
+          origin: string | null
+          origin_lat: number | null
+          origin_lng: number | null
           recurring_days: Json | null
+          route_details: Json | null
           updated_at: string
           user_id: string
         }
@@ -34,14 +42,22 @@ export type Database = {
           arrival_date: string
           arrival_time: string
           created_at?: string
+          departure_time?: string | null
           destination: string
+          destination_lat?: number | null
+          destination_lng?: number | null
+          estimated_duration?: number | null
           id?: string
           is_active?: boolean
           notify_crowding?: boolean
           notify_delays?: boolean
           notify_departure?: boolean
           notify_route_changes?: boolean
+          origin?: string | null
+          origin_lat?: number | null
+          origin_lng?: number | null
           recurring_days?: Json | null
+          route_details?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -49,14 +65,22 @@ export type Database = {
           arrival_date?: string
           arrival_time?: string
           created_at?: string
+          departure_time?: string | null
           destination?: string
+          destination_lat?: number | null
+          destination_lng?: number | null
+          estimated_duration?: number | null
           id?: string
           is_active?: boolean
           notify_crowding?: boolean
           notify_delays?: boolean
           notify_departure?: boolean
           notify_route_changes?: boolean
+          origin?: string | null
+          origin_lat?: number | null
+          origin_lng?: number | null
           recurring_days?: Json | null
+          route_details?: Json | null
           updated_at?: string
           user_id?: string
         }
