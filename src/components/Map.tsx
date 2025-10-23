@@ -355,16 +355,18 @@ const Map = forwardRef<MapRef, MapProps>(({
   }, []);
 
   // Optimized marker update with viewport filtering
-  const updateMarkers = useCallback(() => {
+  const updateMarkers = useCallback((immediate: boolean = false) => {
     if (!map.current || !transitData) return;
 
-    // Throttle updates
-    if (updateTimeoutRef.current) return;
-    updateTimeoutRef.current = setTimeout(() => {
-      updateTimeoutRef.current = null;
-    }, 200);
+    // Throttle updates only for map movements, not for filter changes
+    if (!immediate && updateTimeoutRef.current) return;
+    if (!immediate) {
+      updateTimeoutRef.current = setTimeout(() => {
+        updateTimeoutRef.current = null;
+      }, 200);
+    }
 
-    requestAnimationFrame(() => {
+    const doUpdate = () => {
       const currentVehicleIds = new Set<string>();
       const currentStopIds = new Set<string>();
 
@@ -708,7 +710,13 @@ const Map = forwardRef<MapRef, MapProps>(({
           stopMarkersRef.current.delete(id);
         }
       });
-    });
+    };
+    
+    if (immediate) {
+      doUpdate();
+    } else {
+      requestAnimationFrame(doUpdate);
+    }
   }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes]);
 
   // Update markers when transit data changes
@@ -986,13 +994,11 @@ const Map = forwardRef<MapRef, MapProps>(({
                         map.current.removeLayer(selectedRouteLayer.current);
                         selectedRouteLayer.current = null;
                       }
-                      setTimeout(() => {
-                        if (updateTimeoutRef.current) {
-                          clearTimeout(updateTimeoutRef.current);
-                          updateTimeoutRef.current = null;
-                        }
-                        updateMarkers();
-                      }, 100);
+                      if (updateTimeoutRef.current) {
+                        clearTimeout(updateTimeoutRef.current);
+                        updateTimeoutRef.current = null;
+                      }
+                      updateMarkers(true);
                     }}
                     className="text-destructive hover:scale-110 transition-transform"
                   >
@@ -1012,13 +1018,11 @@ const Map = forwardRef<MapRef, MapProps>(({
                   <button
                     onClick={() => {
                       setFilteredRoutes([]);
-                      setTimeout(() => {
-                        if (updateTimeoutRef.current) {
-                          clearTimeout(updateTimeoutRef.current);
-                          updateTimeoutRef.current = null;
-                        }
-                        updateMarkers();
-                      }, 100);
+                      if (updateTimeoutRef.current) {
+                        clearTimeout(updateTimeoutRef.current);
+                        updateTimeoutRef.current = null;
+                      }
+                      updateMarkers(true);
                     }}
                     className="text-xs text-destructive hover:underline"
                   >
@@ -1052,14 +1056,14 @@ const Map = forwardRef<MapRef, MapProps>(({
                               ? prev.filter(id => id !== routeIdStr)
                               : [...prev, routeIdStr];
                             
-                            // Trigger update after state change
+                            // Trigger immediate update after state change
                             setTimeout(() => {
                               if (updateTimeoutRef.current) {
                                 clearTimeout(updateTimeoutRef.current);
                                 updateTimeoutRef.current = null;
                               }
-                              updateMarkers();
-                            }, 100);
+                              updateMarkers(true);
+                            }, 0);
                             
                             return newFilters;
                           });
