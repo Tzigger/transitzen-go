@@ -8,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import PaymentMethod from "./PaymentMethod";
+import TicketQRCode from "./TicketQRCode";
 
 type TicketType = {
   id: string;
@@ -21,10 +23,56 @@ const ticketTypes: TicketType[] = [
   { id: "month", name: "Abonament 1 lună", price: 120 },
 ];
 
+type Step = "select" | "payment" | "qr";
+
 const TicketSelector = () => {
   const [selectedTicket, setSelectedTicket] = useState<string>("");
+  const [currentStep, setCurrentStep] = useState<Step>("select");
+  const [ticketId, setTicketId] = useState<string>("");
 
   const selectedTicketData = ticketTypes.find((t) => t.id === selectedTicket);
+
+  const handleContinueToPayment = () => {
+    if (selectedTicket) {
+      setCurrentStep("payment");
+    }
+  };
+
+  const handlePaymentSuccess = (newTicketId: string) => {
+    setTicketId(newTicketId);
+    setCurrentStep("qr");
+  };
+
+  const handleBackToSelect = () => {
+    setCurrentStep("select");
+  };
+
+  const handleCloseQR = () => {
+    setSelectedTicket("");
+    setTicketId("");
+    setCurrentStep("select");
+  };
+
+  if (currentStep === "payment" && selectedTicketData) {
+    return (
+      <PaymentMethod
+        ticketPrice={selectedTicketData.price}
+        onPaymentSuccess={handlePaymentSuccess}
+        onBack={handleBackToSelect}
+      />
+    );
+  }
+
+  if (currentStep === "qr" && selectedTicketData) {
+    return (
+      <TicketQRCode
+        ticketId={ticketId}
+        ticketType={selectedTicketData.name}
+        price={selectedTicketData.price}
+        onClose={handleCloseQR}
+      />
+    );
+  }
 
   return (
     <div className="glass p-5 rounded-[2rem] border-white/10">
@@ -61,6 +109,7 @@ const TicketSelector = () => {
       )}
 
       <Button
+        onClick={handleContinueToPayment}
         disabled={!selectedTicket}
         className="w-full h-14 mt-4 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-2xl transition-all disabled:opacity-50"
       >
