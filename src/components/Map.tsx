@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle, memo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
 import {
   Drawer,
   DrawerContent,
@@ -59,6 +62,8 @@ const Map = forwardRef<MapRef, MapProps>(({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const routeLayer = useRef<L.Polyline | null>(null);
   const vehicleRouteLayer = useRef<L.Polyline | null>(null);
+  const vehicleClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
+  const stopClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
   const vehicleMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const stopMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const [transitData, setTransitData] = useState<any>(null);
@@ -213,6 +218,50 @@ const Map = forwardRef<MapRef, MapProps>(({
       subdomains: 'abcd',
     }).addTo(map.current);
 
+    // Initialize marker cluster groups
+    vehicleClusterGroup.current = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        let size = 'small';
+        if (count > 20) size = 'large';
+        else if (count > 10) size = 'medium';
+        
+        return L.divIcon({
+          html: `<div class="vehicle-cluster-marker vehicle-cluster-${size}">
+            <div class="cluster-inner">
+              <span>${count}</span>
+            </div>
+          </div>`,
+          className: 'custom-cluster-icon',
+          iconSize: L.point(40, 40),
+        });
+      },
+    });
+    
+    stopClusterGroup.current = L.markerClusterGroup({
+      maxClusterRadius: 40,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        return L.divIcon({
+          html: `<div class="stop-cluster-marker">
+            <span>${count}</span>
+          </div>`,
+          className: 'custom-cluster-icon',
+          iconSize: L.point(30, 30),
+        });
+      },
+    });
+    
+    map.current.addLayer(vehicleClusterGroup.current);
+    map.current.addLayer(stopClusterGroup.current);
+
     // Add custom user location marker
     const userIcon = L.divIcon({
       className: 'custom-user-marker',
@@ -246,9 +295,13 @@ const Map = forwardRef<MapRef, MapProps>(({
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
       }
-      vehicleMarkersRef.current.forEach(marker => marker.remove());
+      if (vehicleClusterGroup.current) {
+        vehicleClusterGroup.current.clearLayers();
+      }
+      if (stopClusterGroup.current) {
+        stopClusterGroup.current.clearLayers();
+      }
       vehicleMarkersRef.current.clear();
-      stopMarkersRef.current.forEach(marker => marker.remove());
       stopMarkersRef.current.clear();
       if (tileLayerRef.current) {
         tileLayerRef.current.remove();
@@ -421,8 +474,7 @@ const Map = forwardRef<MapRef, MapProps>(({
 
           const marker = L.marker([vehicle.latitude, vehicle.longitude], { 
             icon: vehicleIcon,
-            rotationAngle: vehicle.bearing || 0,
-          }).addTo(map.current!);
+          });
 
           marker.on('click', () => {
             // Find route info for this vehicle - vehicle has routeId from formatting
@@ -564,13 +616,20 @@ const Map = forwardRef<MapRef, MapProps>(({
           });
 
           vehicleMarkersRef.current.set(vehicleId, marker);
+          
+          // Add to cluster group instead of map
+          if (vehicleClusterGroup.current) {
+            vehicleClusterGroup.current.addLayer(marker);
+          }
         }
       });
 
       // Remove markers that are no longer in data or out of range
       vehicleMarkersRef.current.forEach((marker, id) => {
         if (!currentVehicleIds.has(id)) {
-          marker.remove();
+          if (vehicleClusterGroup.current) {
+            vehicleClusterGroup.current.removeLayer(marker);
+          }
           vehicleMarkersRef.current.delete(id);
         }
       });
@@ -629,9 +688,7 @@ const Map = forwardRef<MapRef, MapProps>(({
 
           const marker = L.marker([stop.latitude, stop.longitude], { 
             icon: stopIcon,
-          })
-            .bindPopup(`<b>${stop.name}</b>`)
-            .addTo(map.current!);
+          }).bindPopup(`<b>${stop.name}</b>`);
 
           // Add click event to show stop arrivals drawer
           marker.on('click', () => {
@@ -646,13 +703,20 @@ const Map = forwardRef<MapRef, MapProps>(({
           });
 
           stopMarkersRef.current.set(stopId, marker);
+          
+          // Add to cluster group instead of map
+          if (stopClusterGroup.current) {
+            stopClusterGroup.current.addLayer(marker);
+          }
         }
       });
 
       // Remove stop markers that are out of range
       stopMarkersRef.current.forEach((marker, id) => {
         if (!currentStopIds.has(id)) {
-          marker.remove();
+          if (stopClusterGroup.current) {
+            stopClusterGroup.current.removeLayer(marker);
+          }
           stopMarkersRef.current.delete(id);
         }
       });
@@ -748,12 +812,84 @@ const Map = forwardRef<MapRef, MapProps>(({
         .custom-user-marker,
         .custom-vehicle-marker,
         .custom-stop-marker,
-        .custom-dest-marker {
+        .custom-dest-marker,
+        .custom-cluster-icon {
           background: transparent;
           border: none;
         }
         .leaflet-container {
           background: transparent;
+        }
+        
+        /* Vehicle Cluster Styles */
+        .vehicle-cluster-marker {
+          background: linear-gradient(135deg, #3B82F6dd, #3B82F6ff);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          transition: all 0.3s ease;
+        }
+        .vehicle-cluster-marker:hover {
+          transform: scale(1.1);
+          box-shadow: 0 6px 16px rgba(59, 130, 246, 0.6);
+        }
+        .vehicle-cluster-small {
+          width: 40px;
+          height: 40px;
+        }
+        .vehicle-cluster-medium {
+          width: 50px;
+          height: 50px;
+        }
+        .vehicle-cluster-large {
+          width: 60px;
+          height: 60px;
+        }
+        .cluster-inner {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+        }
+        .vehicle-cluster-marker span {
+          color: white;
+          font-weight: bold;
+          font-size: 14px;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        .vehicle-cluster-medium span {
+          font-size: 16px;
+        }
+        .vehicle-cluster-large span {
+          font-size: 18px;
+        }
+        
+        /* Stop Cluster Styles */
+        .stop-cluster-marker {
+          background: linear-gradient(135deg, #10b981dd, #10b981ff);
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          transition: all 0.3s ease;
+        }
+        .stop-cluster-marker:hover {
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6);
+        }
+        .stop-cluster-marker span {
+          color: white;
+          font-weight: bold;
+          font-size: 11px;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
       `}</style>
       <div ref={mapContainer} className="absolute inset-0 z-0" />
