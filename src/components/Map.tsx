@@ -70,6 +70,7 @@ const Map = forwardRef<MapRef, MapProps>(({
   const [isStopDrawerOpen, setIsStopDrawerOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const selectedRouteLayer = useRef<L.Polyline | null>(null);
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
@@ -355,8 +356,8 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
         }
 
-        // Skip if not in viewport
-        if (!isInViewport(vehicle.latitude, vehicle.longitude)) {
+        // Skip if not in viewport AND not on selected route
+        if (!isInViewport(vehicle.latitude, vehicle.longitude) && !selectedRoute) {
           return;
         }
 
@@ -740,6 +741,30 @@ const Map = forwardRef<MapRef, MapProps>(({
       `}</style>
       <div ref={mapContainer} className="absolute inset-0 z-0" />
 
+      {/* Filter Button */}
+      {selectedRoute && (
+        <button
+          onClick={() => setIsFilterDrawerOpen(true)}
+          className="absolute top-4 left-4 z-[600] w-12 h-12 glass-card backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-xl hover:scale-105 transition-all border border-white/10"
+          aria-label="Open filters"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="w-6 h-6 text-primary"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+            />
+          </svg>
+        </button>
+      )}
+
       {/* Vehicle Details Drawer */}
       <Drawer open={isVehicleDialogOpen} onOpenChange={setIsVehicleDialogOpen}>
         <DrawerContent className="glass-card backdrop-blur-xl border-0 max-h-[60vh] rounded-t-[2rem]" aria-describedby="vehicle-details-description">
@@ -810,6 +835,75 @@ const Map = forwardRef<MapRef, MapProps>(({
           setSelectedStop(null);
         }}
       />
+
+      {/* Filter Drawer */}
+      <Drawer open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
+        <DrawerContent className="glass-card backdrop-blur-xl border-0 max-h-[50vh] rounded-t-[2rem]" aria-describedby="filter-description">
+          <DrawerHeader className="text-center border-b border-white/10 pb-6">
+            <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-6" />
+            <DrawerTitle className="text-2xl font-bold">
+              Filtru Rută
+            </DrawerTitle>
+          </DrawerHeader>
+          <div id="filter-description" className="px-6 pb-8 space-y-4">
+            {selectedRoute ? (
+              <>
+                <div className="glass-strong rounded-3xl p-5 border-l-[5px] shadow-lg" style={{ 
+                  borderColor: '#8B5CF6',
+                  background: 'linear-gradient(135deg, #8B5CF605, transparent)'
+                }}>
+                  <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Rută Selectată</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-3xl font-bold text-primary">{selectedRoute.route_short_name}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{selectedRoute.route_long_name}</p>
+                    </div>
+                    <div className="text-4xl">
+                      {selectedRoute.route_type === 0 ? '🚊' : '🚍'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setSelectedRoute(null);
+                    setIsFilterDrawerOpen(false);
+                    if (selectedRouteLayer.current && map.current) {
+                      map.current.removeLayer(selectedRouteLayer.current);
+                      selectedRouteLayer.current = null;
+                    }
+                  }}
+                  className="w-full glass-strong rounded-3xl p-4 flex items-center justify-center gap-2 hover:bg-destructive/20 transition-all border border-white/10 group"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 text-destructive group-hover:scale-110 transition-transform"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                  <span className="font-semibold text-destructive">Șterge Filtru</span>
+                </button>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  Se afișează doar vehiculele și stațiile pentru această rută
+                </p>
+              </>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                Nicio rută selectată
+              </p>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
     </>
   );
 });
