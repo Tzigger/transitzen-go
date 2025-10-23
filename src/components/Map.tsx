@@ -675,7 +675,7 @@ const Map = forwardRef<MapRef, MapProps>(({
 
           const marker = L.marker([stop.latitude, stop.longitude], { 
             icon: stopIcon,
-          }).bindPopup(`<b>${stop.name}</b>`);
+          });
 
           // Add click event to show stop arrivals drawer
           marker.on('click', () => {
