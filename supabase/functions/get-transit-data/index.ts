@@ -254,15 +254,49 @@ serve(async (req) => {
       });
     });
 
-    // Sort shapes by sequence and attach to routes
+    console.log('🗺️ Total shape IDs:', Object.keys(shapesByShapeId).length);
+    console.log('🗺️ Sample shape IDs:', Object.keys(shapesByShapeId).slice(0, 5));
+
+    // Sort shapes by sequence
     Object.keys(shapesByShapeId).forEach(shapeId => {
       shapesByShapeId[shapeId].sort((a, b) => a.sequence - b.sequence);
     });
 
-    const routesWithShapes = routesData.map((route: any) => ({
-      ...route,
-      shapes: shapesByShapeId[route.shape_id] || [],
-    }));
+    // Map trips to their shape_ids for easier lookup
+    const tripShapeMap: Record<string, string> = {};
+    tripsData.forEach((trip: any) => {
+      if (trip.shape_id) {
+        tripShapeMap[trip.trip_id] = trip.shape_id;
+      }
+    });
+
+    console.log('🗺️ Total trips with shapes:', Object.keys(tripShapeMap).length);
+
+    // For each route, find all trips and get their shapes
+    const routesWithShapes = routesData.map((route: any) => {
+      // Find all trips for this route
+      const routeTrips = tripsData.filter((trip: any) => trip.route_id === route.route_id);
+      
+      // Get shapes from the first trip that has shapes
+      let shapes: any[] = [];
+      for (const trip of routeTrips) {
+        if (trip.shape_id && shapesByShapeId[trip.shape_id]) {
+          shapes = shapesByShapeId[trip.shape_id];
+          break;
+        }
+      }
+
+      if (shapes.length === 0) {
+        console.log(`⚠️ No shapes found for route ${route.route_short_name} (route_id: ${route.route_id})`);
+      } else {
+        console.log(`✅ Found ${shapes.length} shapes for route ${route.route_short_name}`);
+      }
+
+      return {
+        ...route,
+        shapes,
+      };
+    });
 
     // Create a map of trip_id to ordered stops
     const tripStopSequences: Record<string, any[]> = {};
