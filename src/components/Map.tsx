@@ -361,6 +361,22 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
 
         const vehicleId = vehicle.id || `${vehicle.routeShortName}-${vehicle.latitude}-${vehicle.longitude}`;
+        
+        // Check route number before adding to current set
+        const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
+        const routeNumber = vehicle.label || routeInfo?.route_short_name || '?';
+        
+        // Don't render vehicles with "?" as route number
+        if (routeNumber === '?') {
+          // Remove if it exists
+          const existingMarker = vehicleMarkersRef.current.get(vehicleId);
+          if (existingMarker) {
+            existingMarker.remove();
+            vehicleMarkersRef.current.delete(vehicleId);
+          }
+          return;
+        }
+        
         currentVehicleIds.add(vehicleId);
 
         const existingMarker = vehicleMarkersRef.current.get(vehicleId);
@@ -370,10 +386,8 @@ const Map = forwardRef<MapRef, MapProps>(({
           existingMarker.setLatLng([vehicle.latitude, vehicle.longitude]);
         } else {
           // Create new marker - determine color based on vehicle type
-          const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
           // Tramvai = mov (#8B5CF6), Autobuz = albastru (#3B82F6)
           const vehicleColor = vehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
-          const routeNumber = vehicle.label || routeInfo?.route_short_name || '?';
           const isAccessible = vehicle.wheelchair_accessible === 'WHEELCHAIR_ACCESSIBLE';
           
           const vehicleIcon = L.divIcon({
