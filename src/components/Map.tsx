@@ -761,7 +761,7 @@ const Map = forwardRef<MapRef, MapProps>(({
       {/* Filter Button - Always visible */}
       <button
         onClick={() => setIsFilterDrawerOpen(true)}
-        className="absolute bottom-28 left-4 w-11 h-11 glass-card backdrop-blur-xl rounded-full flex items-center justify-center shadow-2xl z-[600] border border-white/10 group hover:bg-primary/20 transition-all hover:scale-110"
+        className="absolute bottom-28 left-4 w-11 h-11 glass-card backdrop-blur-xl rounded-full flex items-center justify-center shadow-2xl z-40 border border-white/10 group hover:bg-primary/20 transition-all hover:scale-110"
         aria-label="Open filters"
       >
         <svg
