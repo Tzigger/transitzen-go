@@ -63,7 +63,6 @@ const Map = forwardRef<MapRef, MapProps>(({
   const routeLayer = useRef<L.Polyline | null>(null);
   const vehicleRouteLayer = useRef<L.Polyline | null>(null);
   const vehicleClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
-  const stopClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
   const vehicleMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const stopMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const [transitData, setTransitData] = useState<any>(null);
@@ -249,26 +248,7 @@ const Map = forwardRef<MapRef, MapProps>(({
       },
     });
     
-    stopClusterGroup.current = L.markerClusterGroup({
-      maxClusterRadius: 40,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      zoomToBoundsOnClick: true,
-      disableClusteringAtZoom: 17,
-      iconCreateFunction: (cluster) => {
-        const count = cluster.getChildCount();
-        return L.divIcon({
-          html: `<div class="stop-cluster-marker">
-            <span>${count}</span>
-          </div>`,
-          className: 'custom-cluster-icon',
-          iconSize: L.point(30, 30),
-        });
-      },
-    });
-    
     map.current.addLayer(vehicleClusterGroup.current);
-    map.current.addLayer(stopClusterGroup.current);
 
     // Add custom user location marker
     const userIcon = L.divIcon({
@@ -305,9 +285,6 @@ const Map = forwardRef<MapRef, MapProps>(({
       }
       if (vehicleClusterGroup.current) {
         vehicleClusterGroup.current.clearLayers();
-      }
-      if (stopClusterGroup.current) {
-        stopClusterGroup.current.clearLayers();
       }
       vehicleMarkersRef.current.clear();
       stopMarkersRef.current.clear();
@@ -714,9 +691,9 @@ const Map = forwardRef<MapRef, MapProps>(({
 
           stopMarkersRef.current.set(stopId, marker);
           
-          // Add to cluster group instead of map
-          if (stopClusterGroup.current) {
-            stopClusterGroup.current.addLayer(marker);
+          // Add directly to map
+          if (map.current) {
+            map.current.addLayer(marker);
           }
         }
       });
@@ -725,8 +702,8 @@ const Map = forwardRef<MapRef, MapProps>(({
       // Remove stop markers that are out of range
       stopMarkersRef.current.forEach((marker, id) => {
         if (!currentStopIds.has(id)) {
-          if (stopClusterGroup.current) {
-            stopClusterGroup.current.removeLayer(marker);
+          if (map.current) {
+            map.current.removeLayer(marker);
           }
           stopMarkersRef.current.delete(id);
         }
@@ -832,20 +809,20 @@ const Map = forwardRef<MapRef, MapProps>(({
           background: transparent;
         }
         
-        /* Vehicle Cluster Styles - Orange/Yellow for distinction */
+        /* Vehicle Cluster Styles */
         .vehicle-cluster-marker {
-          background: linear-gradient(135deg, #f59e0bdd, #f59e0bff);
+          background: linear-gradient(135deg, #10b981dd, #10b981ff);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
-          border: 3px solid rgba(255, 255, 255, 0.4);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+          border: 2px solid rgba(255, 255, 255, 0.3);
           transition: all 0.3s ease;
         }
         .vehicle-cluster-marker:hover {
-          transform: scale(1.15);
-          box-shadow: 0 6px 16px rgba(245, 158, 11, 0.7);
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6);
         }
         .vehicle-cluster-small {
           width: 40px;
@@ -877,30 +854,6 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
         .vehicle-cluster-large span {
           font-size: 18px;
-        }
-        
-        /* Stop Cluster Styles */
-        .stop-cluster-marker {
-          background: linear-gradient(135deg, #10b981dd, #10b981ff);
-          border-radius: 50%;
-          width: 30px;
-          height: 30px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          transition: all 0.3s ease;
-        }
-        .stop-cluster-marker:hover {
-          transform: scale(1.1);
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6);
-        }
-        .stop-cluster-marker span {
-          color: white;
-          font-weight: bold;
-          font-size: 11px;
-          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
       `}</style>
       <div ref={mapContainer} className="absolute inset-0 z-0" />
