@@ -307,18 +307,13 @@ const Map = forwardRef<MapRef, MapProps>(({
           return;
         }
 
-        // Filter out vehicles in depot (not moving or inactive)
-        if (!vehicle.speed || vehicle.speed < 2) {
-          return;
-        }
-
-        // Filter out vehicles with no recent activity (older than 15 minutes)
+        // Filter out vehicles with no recent activity (older than 30 minutes)
         if (vehicle.timestamp) {
           const vehicleTime = new Date(vehicle.timestamp).getTime();
           const currentTime = Date.now();
-          const fifteenMinutesInMs = 15 * 60 * 1000;
+          const thirtyMinutesInMs = 30 * 60 * 1000;
           
-          if (currentTime - vehicleTime > fifteenMinutesInMs) {
+          if (currentTime - vehicleTime > thirtyMinutesInMs) {
             return;
           }
         }

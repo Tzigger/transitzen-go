@@ -41,38 +41,47 @@ export const StopArrivalsDrawer = ({
   const arrivals = useMemo(() => {
     if (!selectedStop || !transitData?.routes || !transitData?.vehicles || !transitData?.trips || !transitData?.tripStopSequences) return [];
 
-    console.log('🚏 Calculating arrivals for stop:', selectedStop.name);
+    console.log('🚏 Calculating arrivals for stop:', selectedStop.name, 'ID:', selectedStop.id);
 
-    // Find all routes that pass through this stop (within 50m)
-    const routesAtStop = transitData.routes.filter((route: any) => {
-      if (!route.shapes || route.shapes.length === 0) return false;
-      
-      return route.shapes.some((point: any) => {
-        const distance = calculateDistance(
-          selectedStop.latitude,
-          selectedStop.longitude,
-          point.lat,
-          point.lon
-        );
-        return distance < 0.05; // 50 meters
-      });
+    // Find all trips that include this stop in their sequence
+    const tripsAtStop = new Set<string>();
+    Object.entries(transitData.tripStopSequences).forEach(([tripId, sequence]: [string, any]) => {
+      const hasStop = sequence.some((s: any) => s.stopId === selectedStop.id);
+      if (hasStop) {
+        tripsAtStop.add(tripId);
+      }
     });
+
+    console.log('🚏 Found trips at stop:', tripsAtStop.size);
+
+    // Find all routes for these trips
+    const routeIds = new Set<string>();
+    transitData.trips.forEach((trip: any) => {
+      if (tripsAtStop.has(trip.trip_id)) {
+        routeIds.add(trip.route_id);
+      }
+    });
+
+    console.log('🚏 Found route IDs:', Array.from(routeIds));
+
+    // Get the actual route objects
+    const routesAtStop = transitData.routes.filter((route: any) => routeIds.has(route.route_id));
 
     console.log('🚏 Found routes at stop:', routesAtStop.length);
 
     // For each route, find vehicles and calculate arrival times
     const arrivalsData = routesAtStop.map((route: any) => {
-      // Find active vehicles on this route that are moving
+      // Find active vehicles on this route
       const vehiclesOnRoute = transitData.vehicles.filter((v: any) => {
-        if (v.routeId !== route.route_id || v.speed < 2) return false;
+        if (v.routeId !== route.route_id) return false;
         
-        // Check if vehicle timestamp is recent (within last 15 minutes)
+        // Check if vehicle timestamp is recent (within last 30 minutes)
         if (v.timestamp) {
           const vehicleTime = new Date(v.timestamp).getTime();
           const currentTime = Date.now();
-          const fifteenMinutesInMs = 15 * 60 * 1000;
+          const thirtyMinutesInMs = 30 * 60 * 1000;
           
-          if (currentTime - vehicleTime > fifteenMinutesInMs) {
+          if (currentTime - vehicleTime > thirtyMinutesInMs) {
             return false;
           }
         }
@@ -85,106 +94,36 @@ export const StopArrivalsDrawer = ({
       // Calculate arrival times for each vehicle
       const arrivals = vehiclesOnRoute
         .map((vehicle: any) => {
-          // Get trip for this vehicle's route
-          const tripId = transitData.routeToTripMap?.[vehicle.routeId];
-          
-          if (!tripId) {
-            console.log('⚠️ No trip found for vehicle route:', vehicle.routeId);
+          // Calculate straight-line distance from vehicle to stop
+          const distance = calculateDistance(
+            vehicle.latitude,
+            vehicle.longitude,
+            selectedStop.latitude,
+            selectedStop.longitude
+          );
+
+          // Skip vehicles that are too far (more than 10 km)
+          if (distance > 10) {
             return null;
-          }
-
-          const trip = transitData.trips.find((t: any) => t.trip_id === tripId);
-          
-          if (!trip || !trip.shape_id) {
-            console.log('⚠️ No trip or shape_id found for trip:', tripId);
-            return null;
-          }
-
-          // Get stop sequence for this trip
-          const stopSequence = transitData.tripStopSequences[tripId];
-          
-          if (!stopSequence) {
-            console.log('⚠️ No stop sequence found for trip:', tripId);
-            return null;
-          }
-
-          // Find the selected stop in the sequence
-          const stopIndex = stopSequence.findIndex((s: any) => s.stopId === selectedStop.id);
-          
-          if (stopIndex === -1) {
-            console.log('⚠️ Selected stop not in trip sequence');
-            return null;
-          }
-
-          // Calculate distance along the route from vehicle to stop using shapes
-          if (!route.shapes || route.shapes.length === 0) {
-            return null;
-          }
-
-          // Find closest shape point to vehicle
-          let closestVehicleIdx = 0;
-          let minVehicleDist = Infinity;
-          
-          route.shapes.forEach((point: any, idx: number) => {
-            const dist = calculateDistance(
-              vehicle.latitude,
-              vehicle.longitude,
-              point.lat,
-              point.lon
-            );
-            if (dist < minVehicleDist) {
-              minVehicleDist = dist;
-              closestVehicleIdx = idx;
-            }
-          });
-
-          // Find closest shape point to stop
-          let closestStopIdx = 0;
-          let minStopDist = Infinity;
-          
-          route.shapes.forEach((point: any, idx: number) => {
-            const dist = calculateDistance(
-              selectedStop.latitude,
-              selectedStop.longitude,
-              point.lat,
-              point.lon
-            );
-            if (dist < minStopDist) {
-              minStopDist = dist;
-              closestStopIdx = idx;
-            }
-          });
-
-          // Check if vehicle is before the stop (heading towards it)
-          if (closestVehicleIdx >= closestStopIdx) {
-            console.log('⚠️ Vehicle already passed the stop');
-            return null;
-          }
-
-          // Calculate distance along the route
-          let routeDistance = 0;
-          for (let i = closestVehicleIdx; i < closestStopIdx && i < route.shapes.length - 1; i++) {
-            const p1 = route.shapes[i];
-            const p2 = route.shapes[i + 1];
-            routeDistance += calculateDistance(p1.lat, p1.lon, p2.lat, p2.lon);
           }
 
           // Calculate estimated time based on vehicle's current speed
-          const avgSpeed = vehicle.speed > 0 ? vehicle.speed : 30; // km/h
-          const timeInMinutes = Math.round((routeDistance / avgSpeed) * 60);
+          // Use average speed of 20 km/h if vehicle speed is too low or zero
+          const avgSpeed = vehicle.speed > 5 ? vehicle.speed : 20; // km/h
+          const timeInMinutes = Math.round((distance / avgSpeed) * 60);
 
-          // Only show vehicles within reasonable range (30 minutes)
-          if (timeInMinutes > 30) {
+          // Show all vehicles within 60 minutes
+          if (timeInMinutes > 60) {
             return null;
           }
 
-          console.log(`✅ Vehicle ${vehicle.id} arriving in ${timeInMinutes} min (${routeDistance.toFixed(2)} km away)`);
+          console.log(`✅ Vehicle ${vehicle.id} (${vehicle.routeShortName}) arriving in ${timeInMinutes} min (${distance.toFixed(2)} km away)`);
 
           return {
             vehicleId: vehicle.id,
             vehicleLabel: vehicle.routeShortName,
-            distance: routeDistance,
-            time: Math.max(0, timeInMinutes), // Ensure non-negative
+            distance: distance,
+            time: Math.max(1, timeInMinutes), // Minimum 1 minute
             wheelchair: vehicle.wheelchair_accessible === 'WHEELCHAIR_ACCESSIBLE',
           };
         })
