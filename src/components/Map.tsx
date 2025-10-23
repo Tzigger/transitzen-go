@@ -872,6 +872,14 @@ const Map = forwardRef<MapRef, MapProps>(({
                       map.current.removeLayer(selectedRouteLayer.current);
                       selectedRouteLayer.current = null;
                     }
+                    // Trigger marker update to re-render based on viewport
+                    setTimeout(() => {
+                      if (updateTimeoutRef.current) {
+                        clearTimeout(updateTimeoutRef.current);
+                        updateTimeoutRef.current = null;
+                      }
+                      updateMarkers();
+                    }, 100);
                   }}
                   className="w-full glass-strong rounded-3xl p-4 flex items-center justify-center gap-2 hover:bg-destructive/20 transition-all border border-white/10 group"
                 >
