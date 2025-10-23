@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { useTheme } from 'next-themes';
 
 interface ActiveJourneyMapProps {
   currentLocation: { lat: number; lng: number } | null;
@@ -13,156 +16,151 @@ interface ActiveJourneyMapProps {
 }
 
 const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: ActiveJourneyMapProps) => {
+  const { theme } = useTheme();
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const currentLocationMarkerRef = useRef<L.Marker | null>(null);
+  const pulsingCircleRef = useRef<L.Circle | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const initMap = () => {
-      if (!mapRef.current || !window.google) return;
+    if (!mapRef.current || mapInstanceRef.current) return;
 
-      try {
-        const defaultCenter = currentLocation || destination;
-        
-        const map = new google.maps.Map(mapRef.current, {
-          center: defaultCenter,
-          zoom: 15,
-          styles: [
-            {
-              featureType: 'all',
-              elementType: 'geometry',
-              stylers: [{ color: '#1a1a2e' }],
-            },
-            {
-              featureType: 'all',
-              elementType: 'labels.text.fill',
-              stylers: [{ color: '#8b8b9b' }],
-            },
-            {
-              featureType: 'all',
-              elementType: 'labels.text.stroke',
-              stylers: [{ color: '#1a1a2e' }],
-            },
-            {
-              featureType: 'road',
-              elementType: 'geometry',
-              stylers: [{ color: '#2a2a3e' }],
-            },
-            {
-              featureType: 'road',
-              elementType: 'geometry.stroke',
-              stylers: [{ color: '#1a1a2e' }],
-            },
-            {
-              featureType: 'water',
-              elementType: 'geometry',
-              stylers: [{ color: '#0f0f1e' }],
-            },
-          ],
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-        });
+    try {
+      const defaultCenter = currentLocation || destination;
+      
+      // Initialize map with Leaflet
+      const map = L.map(mapRef.current, {
+        center: [defaultCenter.lat, defaultCenter.lng],
+        zoom: 15,
+        zoomControl: true,
+        attributionControl: false,
+      });
 
-        mapInstanceRef.current = map;
+      mapInstanceRef.current = map;
 
-        // Add destination marker
-        new google.maps.Marker({
-          position: destination,
-          map: map,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 12,
-            fillColor: '#10b981',
-            fillOpacity: 1,
-            strokeWeight: 3,
-            strokeColor: '#ffffff',
-          },
-          title: 'Destinație',
-        });
+      // Initialize tile layer based on theme - same style as /map
+      const tileUrl = theme === 'dark' 
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      
+      tileLayerRef.current = L.tileLayer(tileUrl, {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(map);
 
-        setIsLoaded(true);
-      } catch (error) {
-        console.error('Error initializing map:', error);
+      // Add destination marker with custom style
+      const destinationIcon = L.divIcon({
+        className: 'custom-destination-marker',
+        html: `
+          <div class="relative">
+            <div class="absolute w-12 h-12 rounded-full bg-success/30 animate-ping"></div>
+            <div class="relative w-12 h-12 rounded-full glass-strong flex items-center justify-center border-4 border-success shadow-2xl">
+              <svg class="w-6 h-6 text-success" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+              </svg>
+            </div>
+          </div>
+        `,
+        iconSize: [48, 48],
+        iconAnchor: [24, 48],
+      });
+
+      L.marker([destination.lat, destination.lng], { icon: destinationIcon }).addTo(map);
+
+      setIsLoaded(true);
+    } catch (error) {
+      console.error('Error initializing map:', error);
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
     };
-
-    // Check if Google Maps is already loaded
-    if (window.google && window.google.maps) {
-      initMap();
-    } else {
-      // Load Google Maps script
-      const script = document.createElement('script');
-      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        initMap();
-      };
-      script.onerror = () => {
-        console.error('Failed to load Google Maps script');
-      };
-      document.head.appendChild(script);
-
-      return () => {
-        // Cleanup if needed
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-      };
-    }
   }, []);
 
-  // Update current location marker
+  // Update tile layer when theme changes
   useEffect(() => {
-    if (!isLoaded || !mapInstanceRef.current || !currentLocation || !window.google) return;
+    if (!mapInstanceRef.current || !tileLayerRef.current) return;
 
-    // Remove old marker if exists
+    const tileUrl = theme === 'dark' 
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+
+    // Remove old tile layer
+    tileLayerRef.current.remove();
+
+    // Add new tile layer with updated theme
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      maxZoom: 19,
+      subdomains: 'abcd',
+    }).addTo(mapInstanceRef.current);
+  }, [theme]);
+
+  // Update current location marker with smooth pulsing animation
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current || !currentLocation) return;
+
+    // Remove old marker and circle if exists
     if (currentLocationMarkerRef.current) {
-      currentLocationMarkerRef.current.setMap(null);
+      currentLocationMarkerRef.current.remove();
+    }
+    if (pulsingCircleRef.current) {
+      pulsingCircleRef.current.remove();
     }
 
-    // Create pulsing effect with custom marker
-    const pulsingMarker = new google.maps.Marker({
-      position: currentLocation,
-      map: mapInstanceRef.current,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 10,
-        fillColor: '#3b82f6',
-        fillOpacity: 1,
-        strokeWeight: 4,
-        strokeColor: '#ffffff',
-      },
-      title: 'Locația ta',
-      zIndex: 1000,
+    // Create custom user location marker - same style as /map
+    const userIcon = L.divIcon({
+      className: 'custom-user-marker',
+      html: `
+        <div class="relative">
+          <div class="absolute w-10 h-10 rounded-full bg-primary/30 animate-ping"></div>
+          <div class="relative w-10 h-10 rounded-full glass-strong flex items-center justify-center border-4 border-primary shadow-2xl">
+            <div class="w-4 h-4 rounded-full bg-primary"></div>
+          </div>
+        </div>
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
     });
 
-    currentLocationMarkerRef.current = pulsingMarker;
+    const marker = L.marker([currentLocation.lat, currentLocation.lng], { 
+      icon: userIcon,
+      zIndexOffset: 1000,
+    }).addTo(mapInstanceRef.current);
 
-    // Center map on current location
-    mapInstanceRef.current.panTo(currentLocation);
+    currentLocationMarkerRef.current = marker;
 
-    // Add pulsing circle around current location
-    const pulsingCircle = new google.maps.Circle({
-      strokeColor: '#3b82f6',
-      strokeOpacity: 0.5,
-      strokeWeight: 2,
-      fillColor: '#3b82f6',
-      fillOpacity: 0.2,
-      map: mapInstanceRef.current,
-      center: currentLocation,
+    // Add accuracy circle
+    const accuracyCircle = L.circle([currentLocation.lat, currentLocation.lng], {
+      color: 'rgb(59, 130, 246)',
+      fillColor: 'rgb(59, 130, 246)',
+      fillOpacity: 0.15,
+      weight: 2,
+      opacity: 0.5,
       radius: 50,
+    }).addTo(mapInstanceRef.current);
+
+    pulsingCircleRef.current = accuracyCircle;
+
+    // Center map on current location smoothly
+    mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], 16, {
+      animate: true,
+      duration: 0.5,
     });
 
     // Animate pulsing effect
     let radius = 50;
     let growing = true;
     const pulseInterval = setInterval(() => {
+      if (!pulsingCircleRef.current) {
+        clearInterval(pulseInterval);
+        return;
+      }
+      
       if (growing) {
         radius += 2;
         if (radius >= 100) growing = false;
@@ -170,12 +168,14 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
         radius -= 2;
         if (radius <= 50) growing = true;
       }
-      pulsingCircle.setRadius(radius);
+      pulsingCircleRef.current.setRadius(radius);
     }, 50);
 
     return () => {
       clearInterval(pulseInterval);
-      pulsingCircle.setMap(null);
+      if (pulsingCircleRef.current) {
+        pulsingCircleRef.current.remove();
+      }
     };
   }, [currentLocation, isLoaded]);
 
@@ -185,7 +185,7 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
       
       {/* Loading overlay */}
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[1000]">
           <div className="text-center">
             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
             <p className="text-sm text-muted-foreground">Se încarcă harta...</p>
@@ -195,7 +195,7 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
 
       {/* Current location indicator */}
       {currentLocation && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 glass-card px-4 py-2 rounded-full backdrop-blur-xl shadow-xl">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 glass-card px-4 py-2 rounded-full backdrop-blur-xl shadow-xl z-[500] border border-white/10">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
             <span className="text-xs font-medium text-foreground">Tracking activ</span>
@@ -208,15 +208,17 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
         <button
           onClick={() => {
             if (mapInstanceRef.current && currentLocation) {
-              mapInstanceRef.current.panTo(currentLocation);
-              mapInstanceRef.current.setZoom(16);
+              mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], 16, {
+                animate: true,
+                duration: 0.5,
+              });
             }
           }}
-          className="absolute bottom-4 right-4 w-12 h-12 glass-card rounded-full flex items-center justify-center hover:bg-primary/20 transition-colors shadow-xl"
+          className="absolute bottom-4 right-4 w-12 h-12 glass-card rounded-full flex items-center justify-center hover:bg-primary/20 transition-all shadow-xl z-[500] border border-white/10 group"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="w-6 h-6 text-primary"
+            className="w-6 h-6 text-primary group-hover:scale-110 transition-transform"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
