@@ -85,16 +85,27 @@ const Map = forwardRef<MapRef, MapProps>(({
 
   // Draw selected route from stop arrivals menu
   useEffect(() => {
-    if (!map.current || !selectedRoute) return;
+    console.log('🗺️ Selected route changed:', selectedRoute?.route_short_name || 'none');
+    
+    if (!map.current || !selectedRoute) {
+      console.log('🗺️ Map or selectedRoute not available');
+      return;
+    }
 
     // Remove existing route
     if (selectedRouteLayer.current) {
+      console.log('🗺️ Removing existing route layer');
       map.current.removeLayer(selectedRouteLayer.current);
     }
+
+    console.log('🗺️ Route shapes count:', selectedRoute.shapes?.length || 0);
+    console.log('🗺️ Route data:', selectedRoute);
 
     if (selectedRoute.shapes && selectedRoute.shapes.length > 0) {
       const routeColor = selectedRoute.route_color ? `#${selectedRoute.route_color}` : 
                         (selectedRoute.route_type === 0 ? '#8B5CF6' : '#3B82F6');
+      
+      console.log('🗺️ Drawing route with color:', routeColor);
       
       selectedRouteLayer.current = L.polyline(
         selectedRoute.shapes.map((point: any) => [point.lat, point.lon]),
@@ -105,10 +116,14 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
       ).addTo(map.current);
 
+      console.log('🗺️ Route drawn successfully');
+
       // Fit map to route bounds
       map.current.fitBounds(selectedRouteLayer.current.getBounds(), {
         padding: [50, 50],
       });
+    } else {
+      console.log('🗺️ No shapes available for route');
     }
 
     return () => {

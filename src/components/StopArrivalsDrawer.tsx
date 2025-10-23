@@ -153,6 +153,9 @@ export const StopArrivalsDrawer = ({
   }, [selectedStop, transitData]);
 
   const handleRouteClick = (routeData: any) => {
+    console.log('📍 Route clicked:', routeData.route.route_short_name);
+    console.log('📍 Route has shapes:', routeData.route.shapes?.length || 0);
+    console.log('📍 Full route data:', routeData.route);
     onRouteSelect(routeData.route);
     onOpenChange(false);
   };
