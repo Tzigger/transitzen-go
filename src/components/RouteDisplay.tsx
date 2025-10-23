@@ -1,5 +1,6 @@
 import { Bus, Clock, MapPin, ArrowRight, Navigation } from "lucide-react";
 import { Button } from "./ui/button";
+import { memo } from "react";
 
 type RouteSegment = {
   mode: string;
@@ -205,4 +206,4 @@ const RouteDisplay = ({ routes, onSelectRoute, onConfirmRoute, selectedRoute }: 
   );
 };
 
-export default RouteDisplay;
+export default memo(RouteDisplay);

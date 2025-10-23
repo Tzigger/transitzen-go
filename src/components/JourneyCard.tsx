@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Clock, MapPin, TrendingUp, Users, MoreVertical, Calendar, Trash2, Navigation, Bus, Route } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, memo } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -286,4 +286,4 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
   );
 };
 
-export default JourneyCard;
+export default memo(JourneyCard);

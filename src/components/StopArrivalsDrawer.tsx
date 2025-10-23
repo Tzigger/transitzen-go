@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import {
   Drawer,
   DrawerContent,
@@ -264,3 +264,5 @@ export const StopArrivalsDrawer = ({
     </Drawer>
   );
 };
+
+export default memo(StopArrivalsDrawer);

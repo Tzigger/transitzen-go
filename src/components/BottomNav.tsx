@@ -1,6 +1,7 @@
 import { Home, Map, Clock, User, List } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { memo } from "react";
 
 const BottomNav = () => {
   const navigate = useNavigate();
@@ -46,4 +47,4 @@ const BottomNav = () => {
   );
 };
 
-export default BottomNav;
+export default memo(BottomNav);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from 'next-themes';
@@ -407,4 +407,5 @@ const ActiveJourneyMap = ({
   );
 };
 
-export default ActiveJourneyMap;
+// Memoize to prevent unnecessary re-renders
+export default memo(ActiveJourneyMap);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle, memo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -63,7 +63,7 @@ const Map = forwardRef<MapRef, MapProps>(({
   const stopMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const [transitData, setTransitData] = useState<any>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const MAX_DISTANCE_KM = 1; // Only show vehicles within 1km
+  const mapBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
   const [isVehicleDialogOpen, setIsVehicleDialogOpen] = useState(false);
   const [selectedStop, setSelectedStop] = useState<any>(null);
@@ -228,8 +228,19 @@ const Map = forwardRef<MapRef, MapProps>(({
 
     L.marker([center.lat, center.lng], { icon: userIcon }).addTo(map.current);
 
+    // Add map move event listener for viewport updates
+    let moveTimeout: NodeJS.Timeout;
+    map.current.on('moveend', () => {
+      clearTimeout(moveTimeout);
+      moveTimeout = setTimeout(() => {
+        updateMapBounds();
+        updateMarkers();
+      }, 300);
+    });
+
     // Cleanup
     return () => {
+      clearTimeout(moveTimeout);
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
       }
@@ -263,53 +274,64 @@ const Map = forwardRef<MapRef, MapProps>(({
     }).addTo(map.current);
   }, [theme]);
 
-  // Fetch transit data every 30 seconds
-  useEffect(() => {
-    const fetchTransitData = async () => {
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const response = await fetch(`${supabaseUrl}/functions/v1/get-transit-data`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setTransitData(data);
-        }
-      } catch (error) {
-        console.error('Error fetching transit data:', error);
-      }
-    };
-
-    // Initial fetch
-    fetchTransitData();
-
-    // Set up interval for updates every 30 seconds
-    const interval = setInterval(fetchTransitData, 30000);
-
-    return () => clearInterval(interval);
+  // Debounced update of map bounds
+  const updateMapBounds = useCallback(() => {
+    if (map.current) {
+      mapBoundsRef.current = map.current.getBounds();
+    }
   }, []);
 
-  // Optimized marker update with distance filtering and throttling
+  // Fetch transit data with viewport filtering
+  const fetchTransitData = useCallback(async () => {
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(`${supabaseUrl}/functions/v1/get-transit-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTransitData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching transit data:', error);
+    }
+  }, []);
+
+  // Initial data fetch and periodic updates
+  useEffect(() => {
+    fetchTransitData();
+    const interval = setInterval(fetchTransitData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchTransitData]);
+
+  // Check if a point is within current viewport
+  const isInViewport = useCallback((lat: number, lng: number): boolean => {
+    if (!mapBoundsRef.current) return true;
+    return mapBoundsRef.current.contains([lat, lng]);
+  }, []);
+
+  // Optimized marker update with viewport filtering
   const updateMarkers = useCallback(() => {
     if (!map.current || !transitData) return;
 
-    // Throttle updates for smooth performance
+    // Throttle updates
     if (updateTimeoutRef.current) return;
-    
     updateTimeoutRef.current = setTimeout(() => {
       updateTimeoutRef.current = null;
-    }, 100); // Throttle to max 10 updates per second
+    }, 200);
 
     requestAnimationFrame(() => {
       const currentVehicleIds = new Set<string>();
       const currentStopIds = new Set<string>();
 
-      // Filter and update vehicle markers within 1km radius
-      // If a route is selected, only show vehicles on that route
+      // Get current map bounds
+      updateMapBounds();
+
+      // Filter vehicles: by route if selected, by viewport always
       const filteredVehicles = selectedRoute 
         ? transitData.vehicles?.filter((v: any) => v.routeId === selectedRoute.route_id)
         : transitData.vehicles;
@@ -333,16 +355,8 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
         }
 
-        // Calculate distance from user location
-        const distance = calculateDistance(
-          center.lat, 
-          center.lng, 
-          vehicle.latitude, 
-          vehicle.longitude
-        );
-
-        // Skip if beyond 1km radius
-        if (distance > MAX_DISTANCE_KM) {
+        // Skip if not in viewport
+        if (!isInViewport(vehicle.latitude, vehicle.longitude)) {
           return;
         }
 
@@ -533,7 +547,7 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
       });
 
-      // Filter stops within 1km radius (show max 30 for performance)
+      // Filter stops by viewport (show max 30 for performance)
       const nearbyStops = transitData.stops
         ?.filter((stop: any) => {
           if (!stop.latitude || !stop.longitude || 
@@ -542,14 +556,7 @@ const Map = forwardRef<MapRef, MapProps>(({
             return false;
           }
 
-          const distance = calculateDistance(
-            center.lat, 
-            center.lng, 
-            stop.latitude, 
-            stop.longitude
-          );
-
-          return distance <= MAX_DISTANCE_KM;
+          return isInViewport(stop.latitude, stop.longitude);
         })
         .slice(0, 30) || [];
 
@@ -706,7 +713,7 @@ const Map = forwardRef<MapRef, MapProps>(({
 
       {/* Vehicle Details Drawer */}
       <Drawer open={isVehicleDialogOpen} onOpenChange={setIsVehicleDialogOpen}>
-        <DrawerContent className="glass-card backdrop-blur-xl border-0 max-h-[60vh] rounded-t-[2rem]">
+        <DrawerContent className="glass-card backdrop-blur-xl border-0 max-h-[60vh] rounded-t-[2rem]" aria-describedby="vehicle-details-description">
           <DrawerHeader className="text-center border-b border-white/10 pb-6">
             <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-6" />
             <DrawerTitle className="flex items-center justify-center gap-3 text-2xl font-bold">
@@ -714,7 +721,7 @@ const Map = forwardRef<MapRef, MapProps>(({
               {selectedVehicle?.label && <span className="text-primary">#{selectedVehicle.label}</span>}
             </DrawerTitle>
           </DrawerHeader>
-          <div className="px-6 pb-4 space-y-4">
+          <div id="vehicle-details-description" className="px-6 pb-4 space-y-4">
             {selectedVehicle?.routeInfo && (
               <div className="glass-strong rounded-3xl p-5 border-l-[5px] shadow-lg" style={{ 
                 borderColor: selectedVehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6',
@@ -780,4 +787,5 @@ const Map = forwardRef<MapRef, MapProps>(({
 
 Map.displayName = 'Map';
 
-export default Map;
+// Memoize the component to prevent unnecessary re-renders
+export default memo(Map);
