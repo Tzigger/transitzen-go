@@ -414,10 +414,14 @@ const Map = forwardRef<MapRef, MapProps>(({
       const activeRouteFilter = selectedRoute ? selectedRoute.route_id : null;
       const hasManualFilters = filteredRoutes.length > 0;
       
+      console.log('🔍 Filtering with selectedVehicleTypes:', selectedVehicleTypes);
+      
       const filteredVehicles = transitData.vehicles?.filter((v: any) => {
         // Filter by vehicle type first
         const vehicleType = v.vehicle_type === 0 ? 'tram' : 'bus';
-        if (!selectedVehicleTypes.includes(vehicleType)) {
+        const typeMatch = selectedVehicleTypes.includes(vehicleType);
+        
+        if (!typeMatch) {
           return false;
         }
         
@@ -432,6 +436,8 @@ const Map = forwardRef<MapRef, MapProps>(({
         // Otherwise show all
         return true;
       });
+      
+      console.log(`🚍 Filtered vehicles: ${filteredVehicles?.length || 0} out of ${transitData.vehicles?.length || 0}`);
 
       filteredVehicles?.forEach((vehicle: any) => {
         // Validate coordinates
@@ -765,6 +771,14 @@ const Map = forwardRef<MapRef, MapProps>(({
   useEffect(() => {
     updateMarkers();
   }, [updateMarkers]);
+
+  // Force immediate update when vehicle type filter changes
+  useEffect(() => {
+    if (transitData) {
+      console.log('🔄 Vehicle type filter changed, forcing immediate update');
+      updateMarkers(true);
+    }
+  }, [selectedVehicleTypes]);
 
   // Calculate route using Google Maps API when destination changes
   useEffect(() => {

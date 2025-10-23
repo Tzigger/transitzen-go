@@ -51,9 +51,11 @@ const MapView = () => {
   const [nearbyVehicles, setNearbyVehicles] = useState<any[]>([]);
 
   const toggleVehicleType = (id: string) => {
-    setSelectedVehicles(prev => 
-      prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]
-    );
+    setSelectedVehicles(prev => {
+      const newSelection = prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id];
+      console.log('🚦 Vehicle filter changed:', { id, newSelection });
+      return newSelection;
+    });
   };
 
   const handleSearch = async (query: string) => {
