@@ -283,10 +283,10 @@ const Profile = () => {
 
       <div className="px-4 space-y-4 max-w-md mx-auto">
         {/* Tabs for Profile and Wallet */}
-        <Tabs defaultValue="profile" className="w-full">
+        <Tabs defaultValue="wallet" className="w-full">
           <TabsList className="grid w-full grid-cols-2 glass-card rounded-2xl p-1">
-            <TabsTrigger value="profile" className="rounded-xl">Profil</TabsTrigger>
             <TabsTrigger value="wallet" className="rounded-xl">Wallet</TabsTrigger>
+            <TabsTrigger value="profile" className="rounded-xl">Profil</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="space-y-4 mt-4">
