@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Camera, ChevronRight, LogOut, Trash2, Globe, Bell, Moon, Ruler, Shield, FileText, Info, Mail, Loader2 } from "lucide-react";
+import { ArrowLeft, Camera, ChevronRight, LogOut, Trash2, Globe, Bell, Moon, Ruler, Shield, FileText, Info, Mail, Loader2, Wallet as WalletIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Wallet from "@/components/Wallet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -280,8 +282,16 @@ const Profile = () => {
       </header>
 
       <div className="px-4 space-y-4 max-w-md mx-auto">
-        {/* Profile Info */}
-        <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+        {/* Tabs for Profile and Wallet */}
+        <Tabs defaultValue="profile" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 glass-card rounded-2xl p-1">
+            <TabsTrigger value="profile" className="rounded-xl">Profil</TabsTrigger>
+            <TabsTrigger value="wallet" className="rounded-xl">Wallet</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile" className="space-y-4 mt-4">
+            {/* Profile Info */}
+            <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
           <div className="flex items-center gap-4">
             <div className="relative">
               <div className="w-20 h-20 rounded-full bg-gradient-primary flex items-center justify-center shadow-lg">
@@ -497,7 +507,13 @@ const Profile = () => {
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </button>
-        </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="wallet" className="mt-4">
+            <Wallet />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Logout Dialog */}

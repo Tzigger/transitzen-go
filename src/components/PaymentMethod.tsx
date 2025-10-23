@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 type PaymentMethodType = "card" | "apple-pay" | "google-pay" | "paypal" | "klarna";
 
@@ -103,18 +104,95 @@ const PaymentMethod = ({ ticketPrice, onPaymentSuccess, onBack }: PaymentMethodP
 
     setIsProcessing(true);
 
-    // Simulate payment processing
-    setTimeout(() => {
+    try {
+      // Generate ticket ID
       const ticketId = `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours from now
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
       
+      if (!user) {
+        toast({
+          title: "Eroare",
+          description: "Nu ești autentificat",
+          variant: "destructive",
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      // Get user profile for email
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email, first_name")
+        .eq("id", user.id)
+        .single();
+
+      // Save ticket to database
+      const { error: ticketError } = await supabase
+        .from("tickets")
+        .insert({
+          user_id: user.id,
+          ticket_id: ticketId,
+          ticket_type: paymentMethod === "card" ? "simple" : "simple", // You can map this based on ticketPrice
+          price: ticketPrice,
+          payment_status: "completed",
+          payment_method: paymentMethod,
+          expires_at: expiresAt.toISOString(),
+          qr_data: {
+            ticketId,
+            price: ticketPrice,
+            expiryTime: expiresAt.toISOString(),
+          },
+        });
+
+      if (ticketError) {
+        console.error("Error saving ticket:", ticketError);
+        toast({
+          title: "Eroare",
+          description: "Nu s-a putut salva biletul",
+          variant: "destructive",
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      // Send confirmation email
+      if (profile?.email) {
+        try {
+          await supabase.functions.invoke("send-ticket-confirmation", {
+            body: {
+              email: profile.email,
+              firstName: profile.first_name || "Utilizator",
+              ticketId,
+              ticketType: "Bilet simplu", // Map based on actual ticket type
+              price: ticketPrice,
+              expiresAt: expiresAt.toISOString(),
+            },
+          });
+        } catch (emailError) {
+          console.error("Error sending email:", emailError);
+          // Don't fail the payment if email fails
+        }
+      }
+
       toast({
         title: "Plată reușită! 🎉",
-        description: "Biletul tău a fost generat cu succes",
+        description: "Biletul tău a fost generat cu succes. Verifică-ți emailul pentru confirmare.",
       });
 
       onPaymentSuccess(ticketId);
+    } catch (error) {
+      console.error("Payment error:", error);
+      toast({
+        title: "Eroare",
+        description: "A apărut o eroare la procesarea plății",
+        variant: "destructive",
+      });
+    } finally {
       setIsProcessing(false);
-    }, 1500);
+    }
   };
 
   return (

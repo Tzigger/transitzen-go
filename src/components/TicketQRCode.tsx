@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Clock, CheckCircle2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,11 @@ interface TicketQRCodeProps {
 
 const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProps) => {
   const [timeRemaining, setTimeRemaining] = useState(2 * 60 * 60); // 2 hours in seconds
-  const expiryTime = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  const [qrKey, setQrKey] = useState(0); // Key to force QR code re-render
+  const expiryTime = useRef(new Date(Date.now() + 2 * 60 * 60 * 1000));
 
   useEffect(() => {
+    // Timer for countdown
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
@@ -25,7 +27,15 @@ const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProp
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    // Timer to regenerate QR code every 10 seconds
+    const qrTimer = setInterval(() => {
+      setQrKey((prev) => prev + 1);
+    }, 10000);
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(qrTimer);
+    };
   }, []);
 
   const formatTime = (seconds: number) => {
@@ -86,7 +96,7 @@ const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProp
           <div className="flex justify-between">
             <span className="text-muted-foreground">Expiră la:</span>
             <span className="text-foreground">
-              {expiryTime.toLocaleTimeString("ro-RO", {
+              {expiryTime.current.toLocaleTimeString("ro-RO", {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
@@ -110,11 +120,14 @@ const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProp
       <div className="bg-white p-6 rounded-2xl mb-6 flex items-center justify-center">
         <QRCodeSVG
           id="ticket-qr-code"
+          key={qrKey}
           value={JSON.stringify({
             ticketId,
             ticketType,
             price,
-            expiryTime: expiryTime.toISOString(),
+            expiryTime: expiryTime.current.toISOString(),
+            timestamp: Date.now(), // Dynamic data to change QR
+            qrVersion: qrKey, // Force QR to regenerate
           })}
           size={220}
           level="H"
