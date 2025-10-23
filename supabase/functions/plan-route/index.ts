@@ -19,6 +19,9 @@ interface RouteSegment {
   stops?: number;
   distance: string;
   crowdingLevel?: 'low' | 'medium' | 'high';
+  polyline?: string; // Encoded polyline from Google Maps
+  startLocation?: { lat: number; lng: number };
+  endLocation?: { lat: number; lng: number };
 }
 
 // Function to estimate crowding based on time and route
@@ -144,6 +147,9 @@ serve(async (req) => {
             stops: numStops,
             distance: step.distance.text,
             crowdingLevel: estimateCrowding(departureTime, vehicleType, numStops),
+            polyline: step.polyline?.points || '',
+            startLocation: step.start_location,
+            endLocation: step.end_location,
           });
         } else if (step.travel_mode === 'WALKING') {
           segments.push({
@@ -153,6 +159,9 @@ serve(async (req) => {
             duration: step.duration.text,
             durationMinutes: Math.round(step.duration.value / 60),
             distance: step.distance.text,
+            polyline: step.polyline?.points || '',
+            startLocation: step.start_location,
+            endLocation: step.end_location,
           });
         }
       });
@@ -171,6 +180,7 @@ serve(async (req) => {
         segments,
         departureTime,
         arrivalTime: leg.arrival_time?.text || '',
+        overviewPolyline: route.overview_polyline?.points || '',
       };
     });
 

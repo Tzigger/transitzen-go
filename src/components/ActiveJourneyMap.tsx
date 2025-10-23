@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from 'next-themes';
+import { decodePolyline } from '@/utils/polylineDecoder';
 
 interface RouteSegment {
   type: string;
@@ -18,6 +19,9 @@ interface RouteSegment {
   stops?: number;
   completed?: boolean;
   isActive?: boolean;
+  polyline?: string;
+  startLocation?: { lat: number; lng: number };
+  endLocation?: { lat: number; lng: number };
 }
 
 interface ActiveJourneyMapProps {
@@ -120,7 +124,7 @@ const ActiveJourneyMap = ({
     };
   }, []);
 
-  // Draw route on map
+  // Draw route on map with exact polylines
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current || !routeSegments.length) return;
 
@@ -132,67 +136,78 @@ const ActiveJourneyMap = ({
     });
     routeLayersRef.current = [];
 
-    // Create a simple route line from origin through stops to destination
-    const allPoints: [number, number][] = [];
-    
-    // Add origin
-    allPoints.push([origin.lat, origin.lng]);
+    let stopCounter = 1;
 
-    // For each segment, we'll draw a line
-    // Since we don't have exact coordinates for the route, we'll draw straight lines between key points
+    // Draw each segment with its polyline
     routeSegments.forEach((segment, index) => {
-      if (segment.type === 'TRANSIT') {
+      if (!segment.polyline || !mapInstanceRef.current) return;
+
+      // Decode the polyline to get exact coordinates
+      const coordinates = decodePolyline(segment.polyline);
+      
+      if (coordinates.length === 0) return;
+
+      if (segment.type === 'TRANSIT' || segment.mode === 'TRANSIT') {
         // For transit segments, draw in vehicle color
         const color = segment.vehicle?.type === 'BUS' ? '#3B82F6' : '#8B5CF6';
-        const opacity = segment.completed ? 0.4 : segment.isActive ? 1 : 0.7;
-        const weight = segment.isActive ? 6 : 4;
+        const opacity = segment.completed ? 0.4 : segment.isActive ? 0.9 : 0.7;
+        const weight = segment.isActive ? 6 : 5;
 
-        // We don't have exact route coordinates, so we'll just draw a representation
-        // In a real app, you'd get these from the GTFS shapes
-        
-        // Add a marker for the stop
-        const stopIcon = L.divIcon({
-          className: 'custom-stop-marker',
-          html: `
-            <div class="relative">
-              <div class="w-6 h-6 rounded-full glass-strong flex items-center justify-center border-2" style="border-color: ${color}; background: ${segment.completed ? '#10b981' : segment.isActive ? color : '#6b7280'}">
-                <span class="text-white text-xs font-bold">${index + 1}</span>
+        const transitLine = L.polyline(coordinates, {
+          color: color,
+          weight: weight,
+          opacity: opacity,
+          smoothFactor: 1,
+          className: 'route-polyline',
+        }).addTo(mapInstanceRef.current);
+
+        routeLayersRef.current.push(transitLine);
+
+        // Add stop markers at start and end
+        if (segment.startLocation) {
+          const startIcon = L.divIcon({
+            className: 'custom-stop-marker',
+            html: `
+              <div class="relative">
+                <div class="w-7 h-7 rounded-full glass-strong flex items-center justify-center border-2 shadow-lg" style="border-color: ${color}; background: ${segment.completed ? '#10b981' : segment.isActive ? color : '#6b7280'}">
+                  <span class="text-white text-xs font-bold">${stopCounter}</span>
+                </div>
               </div>
-            </div>
-          `,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
-        });
+            `,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          });
 
-        // Note: Without actual stop coordinates, we can't place these accurately
-        // You would need to pass stop coordinates from the backend
+          L.marker([segment.startLocation.lat, segment.startLocation.lng], { 
+            icon: startIcon,
+            zIndexOffset: 100,
+          }).addTo(mapInstanceRef.current);
+          
+          stopCounter++;
+        }
         
-      } else if (segment.type === 'WALKING') {
+      } else if (segment.type === 'WALKING' || segment.mode === 'WALKING') {
         // For walking segments, draw dashed line
-        const opacity = segment.completed ? 0.4 : segment.isActive ? 1 : 0.7;
+        const opacity = segment.completed ? 0.3 : segment.isActive ? 0.8 : 0.6;
         const weight = segment.isActive ? 4 : 3;
         
-        // Similar issue - we need actual walking path coordinates
+        const walkingLine = L.polyline(coordinates, {
+          color: '#10b981',
+          weight: weight,
+          opacity: opacity,
+          dashArray: '10, 10',
+          smoothFactor: 1,
+          className: 'route-polyline-walking',
+        }).addTo(mapInstanceRef.current);
+
+        routeLayersRef.current.push(walkingLine);
       }
     });
 
-    // Add destination
-    allPoints.push([destination.lat, destination.lng]);
-
-    // Draw a simplified route line (origin to destination)
-    if (allPoints.length >= 2) {
-      const routeLine = L.polyline(allPoints, {
-        color: '#3B82F6',
-        weight: 4,
-        opacity: 0.7,
-        smoothFactor: 1,
-      }).addTo(mapInstanceRef.current);
-
-      routeLayersRef.current.push(routeLine);
-
-      // Fit map to show the entire route
-      const bounds = routeLine.getBounds();
-      mapInstanceRef.current.fitBounds(bounds, {
+    // Fit map to show all route segments
+    if (routeLayersRef.current.length > 0) {
+      const group = L.featureGroup(routeLayersRef.current);
+      mapInstanceRef.current.fitBounds(group.getBounds(), {
         padding: [80, 80],
       });
     }
@@ -205,7 +220,7 @@ const ActiveJourneyMap = ({
       });
       routeLayersRef.current = [];
     };
-  }, [isLoaded, routeSegments, origin, destination]);
+  }, [isLoaded, routeSegments]);
 
   // Update tile layer when theme changes
   useEffect(() => {
