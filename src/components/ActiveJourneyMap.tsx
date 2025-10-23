@@ -3,37 +3,57 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from 'next-themes';
 
-interface ActiveJourneyMapProps {
-  currentLocation: { lat: number; lng: number } | null;
-  journeySteps: Array<{
+interface RouteSegment {
+  type: string;
+  mode?: string;
+  from?: string;
+  to?: string;
+  distance?: string;
+  duration?: string;
+  vehicle?: {
     type: string;
-    from?: string;
-    to?: string;
-    completed?: boolean;
-    isActive?: boolean;
-  }>;
-  destination: { lat: number; lng: number };
+    line: string;
+    name: string;
+  };
+  stops?: number;
+  completed?: boolean;
+  isActive?: boolean;
 }
 
-const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: ActiveJourneyMapProps) => {
+interface ActiveJourneyMapProps {
+  currentLocation: { lat: number; lng: number } | null;
+  journeySteps: RouteSegment[];
+  origin: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  routeSegments: RouteSegment[];
+}
+
+const ActiveJourneyMap = ({ 
+  currentLocation, 
+  journeySteps, 
+  origin,
+  destination,
+  routeSegments 
+}: ActiveJourneyMapProps) => {
   const { theme } = useTheme();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const currentLocationMarkerRef = useRef<L.Marker | null>(null);
   const pulsingCircleRef = useRef<L.Circle | null>(null);
+  const routeLayersRef = useRef<L.Polyline[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
     try {
-      const defaultCenter = currentLocation || destination;
+      const defaultCenter = currentLocation || origin;
       
       // Initialize map with Leaflet
       const map = L.map(mapRef.current, {
         center: [defaultCenter.lat, defaultCenter.lng],
-        zoom: 15,
+        zoom: 14,
         zoomControl: true,
         attributionControl: false,
       });
@@ -49,6 +69,24 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
         maxZoom: 19,
         subdomains: 'abcd',
       }).addTo(map);
+
+      // Add origin marker
+      const originIcon = L.divIcon({
+        className: 'custom-origin-marker',
+        html: `
+          <div class="relative">
+            <div class="relative w-10 h-10 rounded-full glass-strong flex items-center justify-center border-3 border-primary shadow-2xl">
+              <svg class="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+              </svg>
+            </div>
+          </div>
+        `,
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+      });
+
+      L.marker([origin.lat, origin.lng], { icon: originIcon }).addTo(map);
 
       // Add destination marker with custom style
       const destinationIcon = L.divIcon({
@@ -81,6 +119,93 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
       }
     };
   }, []);
+
+  // Draw route on map
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current || !routeSegments.length) return;
+
+    // Clear existing route layers
+    routeLayersRef.current.forEach(layer => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(layer);
+      }
+    });
+    routeLayersRef.current = [];
+
+    // Create a simple route line from origin through stops to destination
+    const allPoints: [number, number][] = [];
+    
+    // Add origin
+    allPoints.push([origin.lat, origin.lng]);
+
+    // For each segment, we'll draw a line
+    // Since we don't have exact coordinates for the route, we'll draw straight lines between key points
+    routeSegments.forEach((segment, index) => {
+      if (segment.type === 'TRANSIT') {
+        // For transit segments, draw in vehicle color
+        const color = segment.vehicle?.type === 'BUS' ? '#3B82F6' : '#8B5CF6';
+        const opacity = segment.completed ? 0.4 : segment.isActive ? 1 : 0.7;
+        const weight = segment.isActive ? 6 : 4;
+
+        // We don't have exact route coordinates, so we'll just draw a representation
+        // In a real app, you'd get these from the GTFS shapes
+        
+        // Add a marker for the stop
+        const stopIcon = L.divIcon({
+          className: 'custom-stop-marker',
+          html: `
+            <div class="relative">
+              <div class="w-6 h-6 rounded-full glass-strong flex items-center justify-center border-2" style="border-color: ${color}; background: ${segment.completed ? '#10b981' : segment.isActive ? color : '#6b7280'}">
+                <span class="text-white text-xs font-bold">${index + 1}</span>
+              </div>
+            </div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+
+        // Note: Without actual stop coordinates, we can't place these accurately
+        // You would need to pass stop coordinates from the backend
+        
+      } else if (segment.type === 'WALKING') {
+        // For walking segments, draw dashed line
+        const opacity = segment.completed ? 0.4 : segment.isActive ? 1 : 0.7;
+        const weight = segment.isActive ? 4 : 3;
+        
+        // Similar issue - we need actual walking path coordinates
+      }
+    });
+
+    // Add destination
+    allPoints.push([destination.lat, destination.lng]);
+
+    // Draw a simplified route line (origin to destination)
+    if (allPoints.length >= 2) {
+      const routeLine = L.polyline(allPoints, {
+        color: '#3B82F6',
+        weight: 4,
+        opacity: 0.7,
+        smoothFactor: 1,
+      }).addTo(mapInstanceRef.current);
+
+      routeLayersRef.current.push(routeLine);
+
+      // Fit map to show the entire route
+      const bounds = routeLine.getBounds();
+      mapInstanceRef.current.fitBounds(bounds, {
+        padding: [80, 80],
+      });
+    }
+
+    return () => {
+      routeLayersRef.current.forEach(layer => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(layer);
+        }
+      });
+      routeLayersRef.current = [];
+    };
+  }, [isLoaded, routeSegments, origin, destination]);
 
   // Update tile layer when theme changes
   useEffect(() => {
@@ -146,11 +271,17 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
 
     pulsingCircleRef.current = accuracyCircle;
 
-    // Center map on current location smoothly
-    mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], 16, {
-      animate: true,
-      duration: 0.5,
-    });
+    // Center map on current location smoothly (but only if not already focused)
+    const currentCenter = mapInstanceRef.current.getCenter();
+    const distance = currentCenter.distanceTo([currentLocation.lat, currentLocation.lng]);
+    
+    // Only recenter if user has moved significantly (more than 100m)
+    if (distance > 100) {
+      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], mapInstanceRef.current.getZoom(), {
+        animate: true,
+        duration: 0.5,
+      });
+    }
 
     // Animate pulsing effect
     let radius = 50;
@@ -199,6 +330,25 @@ const ActiveJourneyMap = ({ currentLocation, journeySteps, destination }: Active
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
             <span className="text-xs font-medium text-foreground">Tracking activ</span>
+          </div>
+        </div>
+      )}
+
+      {/* Route info overlay */}
+      {routeSegments.length > 0 && (
+        <div className="absolute bottom-20 left-4 right-4 glass-card p-3 rounded-2xl backdrop-blur-xl shadow-xl z-[500] border border-white/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-primary"></div>
+              <span className="text-xs font-medium text-foreground">Ruta ta</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {routeSegments.filter(s => s.type === 'TRANSIT').map((seg, idx) => (
+                <div key={idx} className="px-2 py-1 glass rounded-full text-xs font-semibold text-foreground border border-white/10">
+                  {seg.vehicle?.type === 'BUS' ? '🚍' : '🚊'} {seg.vehicle?.line}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

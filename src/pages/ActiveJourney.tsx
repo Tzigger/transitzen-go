@@ -294,10 +294,15 @@ const ActiveJourney = () => {
         <ActiveJourneyMap 
           currentLocation={currentLocation}
           journeySteps={steps}
+          origin={{
+            lat: journeyData.journey.origin_lat,
+            lng: journeyData.journey.origin_lng,
+          }}
           destination={{
             lat: journeyData.journey.destination_lat,
             lng: journeyData.journey.destination_lng,
           }}
+          routeSegments={journeyData.journey.route_details?.segments || []}
         />
       </div>
 
