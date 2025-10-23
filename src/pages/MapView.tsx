@@ -324,6 +324,7 @@ const MapView = () => {
           zoom={13} 
           destination={selectedDestination}
           onRouteCalculated={handleRouteCalculated}
+          selectedVehicleTypes={selectedVehicles}
         />
       </div>
 

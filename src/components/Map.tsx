@@ -44,6 +44,7 @@ interface MapProps {
   zoom?: number;
   destination?: string;
   onRouteCalculated?: (duration: string, distance: string) => void;
+  selectedVehicleTypes?: string[];
 }
 
 export interface MapRef {
@@ -54,7 +55,8 @@ const Map = forwardRef<MapRef, MapProps>(({
   center = { lat: 47.1585, lng: 27.6014 }, 
   zoom = 13,
   destination,
-  onRouteCalculated 
+  onRouteCalculated,
+  selectedVehicleTypes = ['bus', 'tram']
 }, ref) => {
   const { theme } = useTheme();
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -408,11 +410,17 @@ const Map = forwardRef<MapRef, MapProps>(({
       // Get current map bounds
       updateMapBounds();
 
-      // Filter vehicles: by route if selected, by viewport always
+      // Filter vehicles: by route if selected, by viewport always, and by vehicle type
       const activeRouteFilter = selectedRoute ? selectedRoute.route_id : null;
       const hasManualFilters = filteredRoutes.length > 0;
       
       const filteredVehicles = transitData.vehicles?.filter((v: any) => {
+        // Filter by vehicle type first
+        const vehicleType = v.vehicle_type === 0 ? 'tram' : 'bus';
+        if (!selectedVehicleTypes.includes(vehicleType)) {
+          return false;
+        }
+        
         // If a route is selected from stop drawer, show only that route
         if (activeRouteFilter) {
           return v.routeId === activeRouteFilter;
@@ -751,7 +759,7 @@ const Map = forwardRef<MapRef, MapProps>(({
     } else {
       requestAnimationFrame(doUpdate);
     }
-  }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes, getRouteColor]);
+  }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes, getRouteColor, selectedVehicleTypes]);
 
   // Update markers when transit data changes
   useEffect(() => {
