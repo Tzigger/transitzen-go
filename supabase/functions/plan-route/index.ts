@@ -44,9 +44,14 @@ serve(async (req) => {
       );
     }
 
+    // Format destination as coordinates string
+    const destString = typeof destination === 'object' 
+      ? `${destination.lat},${destination.lng}` 
+      : destination;
+
     const directionsUrl = new URL('https://maps.googleapis.com/maps/api/directions/json');
     directionsUrl.searchParams.append('origin', `${origin.lat},${origin.lng}`);
-    directionsUrl.searchParams.append('destination', destination);
+    directionsUrl.searchParams.append('destination', destString);
     directionsUrl.searchParams.append('mode', 'transit');
     directionsUrl.searchParams.append('transit_mode', 'bus|rail|tram');
     directionsUrl.searchParams.append('alternatives', 'true');
