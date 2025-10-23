@@ -417,8 +417,11 @@ const Map = forwardRef<MapRef, MapProps>(({
       console.log('🔍 Filtering with selectedVehicleTypes:', selectedVehicleTypes);
       
       const filteredVehicles = transitData.vehicles?.filter((v: any) => {
-        // Filter by vehicle type first
-        const vehicleType = v.vehicle_type === 0 ? 'tram' : 'bus';
+        // Filter by vehicle type - look up the route to get its type
+        const vehicleRoute = transitData.routes?.find((r: any) => r.route_id === v.routeId);
+        if (!vehicleRoute) return false;
+        
+        const vehicleType = vehicleRoute.route_type === 0 ? 'tram' : 'bus';
         const typeMatch = selectedVehicleTypes.includes(vehicleType);
         
         if (!typeMatch) {
