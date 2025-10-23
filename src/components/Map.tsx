@@ -745,12 +745,12 @@ const Map = forwardRef<MapRef, MapProps>(({
       {selectedRoute && (
         <button
           onClick={() => setIsFilterDrawerOpen(true)}
-          className="absolute top-4 left-4 z-[600] w-12 h-12 glass-card backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-xl hover:scale-105 transition-all border border-white/10"
+          className="absolute bottom-20 left-4 w-12 h-12 glass-card backdrop-blur-xl rounded-full flex items-center justify-center shadow-xl z-[600] border border-white/10 group hover:bg-primary/20 transition-all"
           aria-label="Open filters"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="w-6 h-6 text-primary"
+            className="w-6 h-6 text-primary group-hover:scale-110 transition-transform"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
