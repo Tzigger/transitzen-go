@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Clock, MapPin, Calendar, Bus, Navigation, Trash2 } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Calendar, Bus, Navigation, Trash2, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +106,14 @@ const History = () => {
   const isUpcoming = (dateStr: string, timeStr: string) => {
     const journeyDate = new Date(`${dateStr}T${timeStr}`);
     return journeyDate > new Date();
+  };
+
+  const handleStartJourney = (journey: Journey) => {
+    navigate('/active-journey', {
+      state: {
+        journey: journey,
+      }
+    });
   };
 
   if (loading) {
@@ -271,7 +279,7 @@ const History = () => {
 
                     {/* Route Info */}
                     {journey.route_details && journey.route_details.segments && (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <p className="text-xs text-muted-foreground mb-2">
                           Ruta ({journey.estimated_duration} min • {journey.route_details.totalDistance})
                         </p>
@@ -295,6 +303,17 @@ const History = () => {
                               </div>
                             ))}
                         </div>
+
+                        {/* Start Journey Button - Only for upcoming journeys */}
+                        {upcoming && (
+                          <Button 
+                            onClick={() => handleStartJourney(journey)}
+                            className="w-full gradient-primary h-12 text-sm font-semibold rounded-full shadow-lg hover:shadow-xl transition-all group"
+                          >
+                            <Play className="w-4 h-4 mr-2 group-hover:animate-pulse" />
+                            Pornește călătoria
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>

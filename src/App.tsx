@@ -14,6 +14,7 @@ import Journeys from "./pages/Journeys";
 import History from "./pages/History";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import ActiveJourney from "./pages/ActiveJourney";
 import MobileOnly from "./components/MobileOnly";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/map" element={<MobileOnly><MapView /></MobileOnly>} />
             <Route path="/journeys" element={<MobileOnly><Journeys /></MobileOnly>} />
             <Route path="/history" element={<MobileOnly><History /></MobileOnly>} />
+            <Route path="/active-journey" element={<MobileOnly><ActiveJourney /></MobileOnly>} />
             <Route path="/profile" element={<MobileOnly><Profile /></MobileOnly>} />
             <Route path="*" element={<MobileOnly><NotFound /></MobileOnly>} />
           </Routes>
