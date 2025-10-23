@@ -18,6 +18,44 @@ interface RouteSegment {
   durationMinutes: number;
   stops?: number;
   distance: string;
+  crowdingLevel?: 'low' | 'medium' | 'high';
+}
+
+// Function to estimate crowding based on time and route
+const estimateCrowding = (departureTime: string, vehicleType: string, numStops: number): 'low' | 'medium' | 'high' => {
+  // Parse time (format: "HH:MM AM/PM")
+  const timeMatch = departureTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!timeMatch) return 'medium';
+  
+  let hours = parseInt(timeMatch[1]);
+  const minutes = parseInt(timeMatch[2]);
+  const period = timeMatch[3].toUpperCase();
+  
+  // Convert to 24h format
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  
+  const timeInMinutes = hours * 60 + minutes;
+  
+  // Peak hours: 7-9 AM and 5-7 PM
+  const morningRushStart = 7 * 60;
+  const morningRushEnd = 9 * 60;
+  const eveningRushStart = 17 * 60;
+  const eveningRushEnd = 19 * 60;
+  
+  const isRushHour = 
+    (timeInMinutes >= morningRushStart && timeInMinutes <= morningRushEnd) ||
+    (timeInMinutes >= eveningRushStart && timeInMinutes <= eveningRushEnd);
+  
+  // More stops = potentially more crowded
+  const longRoute = numStops > 5;
+  
+  // Buses tend to be more crowded than trams
+  const isBus = vehicleType === 'BUS';
+  
+  if (isRushHour && (longRoute || isBus)) return 'high';
+  if (isRushHour || longRoute) return 'medium';
+  return 'low';
 }
 
 serve(async (req) => {
@@ -88,10 +126,14 @@ serve(async (req) => {
       leg.steps.forEach((step: any) => {
         if (step.travel_mode === 'TRANSIT' && step.transit_details) {
           const transit = step.transit_details;
+          const vehicleType = transit.line.vehicle.type;
+          const numStops = transit.num_stops || 0;
+          const departureTime = transit.departure_time?.text || leg.departure_time?.text || '';
+          
           segments.push({
             mode: 'TRANSIT',
             vehicle: {
-              type: transit.line.vehicle.type,
+              type: vehicleType,
               line: transit.line.short_name || transit.line.name,
               name: transit.line.name,
             },
@@ -99,8 +141,9 @@ serve(async (req) => {
             to: transit.arrival_stop.name,
             duration: step.duration.text,
             durationMinutes: Math.round(step.duration.value / 60),
-            stops: transit.num_stops,
+            stops: numStops,
             distance: step.distance.text,
+            crowdingLevel: estimateCrowding(departureTime, vehicleType, numStops),
           });
         } else if (step.travel_mode === 'WALKING') {
           segments.push({

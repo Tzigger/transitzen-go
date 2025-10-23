@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.plan-route]
 verify_jwt = false
+
+[functions.send-journey-notifications]
+verify_jwt = false

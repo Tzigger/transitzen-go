@@ -13,6 +13,7 @@ type RouteSegment = {
   duration: string;
   stops?: number;
   distance: string;
+  crowdingLevel?: 'low' | 'medium' | 'high';
 };
 
 type RouteOption = {
@@ -135,6 +136,19 @@ const RouteDisplay = ({ routes, onSelectRoute, onConfirmRoute, selectedRoute }: 
                           <span className="px-2 py-1 rounded-lg bg-secondary/10 text-secondary font-medium">
                             📏 {segment.distance}
                           </span>
+                          {segment.crowdingLevel && (
+                            <span className={`px-2 py-1 rounded-lg font-medium ${
+                              segment.crowdingLevel === 'high' 
+                                ? 'bg-red-500/20 text-red-400' 
+                                : segment.crowdingLevel === 'medium'
+                                ? 'bg-yellow-500/20 text-yellow-400'
+                                : 'bg-green-500/20 text-green-400'
+                            }`}>
+                              {segment.crowdingLevel === 'high' ? '🔴 Aglomerat' : 
+                               segment.crowdingLevel === 'medium' ? '🟡 Moderat' : 
+                               '🟢 Liber'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
