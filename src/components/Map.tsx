@@ -390,7 +390,7 @@ const Map = forwardRef<MapRef, MapProps>(({
             const tripId = transitData.routeToTripMap?.[vehicle.routeId];
             let nextStopName = 'Necunoscut';
             
-            if (tripId && transitData.tripStopSequences?.[tripId] && routeInfo?.shapes) {
+            if (tripId && transitData.tripStopSequences?.[tripId] && routeInfo?.shapes && routeInfo.shapes.length > 1) {
               // Get stop sequence for this trip
               const stopSequence = transitData.tripStopSequences[tripId];
               
@@ -411,33 +411,109 @@ const Map = forwardRef<MapRef, MapProps>(({
                 }
               });
               
-              // Find the next stop after current vehicle position
-              for (const stopInSequence of stopSequence) {
-                const stop = transitData.stops?.find((s: any) => s.id === stopInSequence.stopId);
-                if (!stop) continue;
+              // Determine vehicle direction by comparing with next/previous shape points
+              // Calculate bearing/direction to understand if moving forward or backward on route
+              let isMovingForward = true;
+              
+              if (closestShapeIdx > 0 && closestShapeIdx < routeInfo.shapes.length - 1) {
+                const prevPoint = routeInfo.shapes[closestShapeIdx - 1];
+                const nextPoint = routeInfo.shapes[closestShapeIdx + 1];
                 
-                // Find closest shape point to this stop
-                let closestStopIdx = 0;
-                let minStopDist = Infinity;
+                // Calculate distances to previous and next points
+                const distToPrev = calculateDistance(
+                  vehicle.latitude,
+                  vehicle.longitude,
+                  prevPoint.lat,
+                  prevPoint.lon
+                );
                 
-                routeInfo.shapes.forEach((point: any, idx: number) => {
-                  const dist = calculateDistance(
-                    stop.latitude,
-                    stop.longitude,
-                    point.lat,
-                    point.lon
-                  );
-                  if (dist < minStopDist) {
-                    minStopDist = dist;
-                    closestStopIdx = idx;
-                  }
-                });
+                const distToNext = calculateDistance(
+                  vehicle.latitude,
+                  vehicle.longitude,
+                  nextPoint.lat,
+                  nextPoint.lon
+                );
                 
-                // If this stop is ahead of the vehicle, it's the next stop
-                if (closestStopIdx > closestShapeIdx) {
-                  nextStopName = stop.name;
-                  break;
+                // If we're closer to previous point than next, we're likely moving backward
+                // Also consider vehicle speed - if speed is > 0, use bearing direction
+                if (vehicle.speed > 5) {
+                  // For vehicles with good speed, assume forward movement
+                  isMovingForward = distToNext <= distToPrev;
                 }
+              }
+              
+              console.log(`🚌 Vehicle ${vehicle.id} at shape index ${closestShapeIdx}, moving ${isMovingForward ? 'forward' : 'backward'}`);
+              
+              // Find the next stop based on direction
+              let foundNextStop = false;
+              
+              if (isMovingForward) {
+                // Moving forward in sequence - find next stop ahead
+                for (const stopInSequence of stopSequence) {
+                  const stop = transitData.stops?.find((s: any) => s.id === stopInSequence.stopId);
+                  if (!stop) continue;
+                  
+                  // Find closest shape point to this stop
+                  let closestStopIdx = 0;
+                  let minStopDist = Infinity;
+                  
+                  routeInfo.shapes.forEach((point: any, idx: number) => {
+                    const dist = calculateDistance(
+                      stop.latitude,
+                      stop.longitude,
+                      point.lat,
+                      point.lon
+                    );
+                    if (dist < minStopDist) {
+                      minStopDist = dist;
+                      closestStopIdx = idx;
+                    }
+                  });
+                  
+                  // If this stop is ahead of the vehicle
+                  if (closestStopIdx > closestShapeIdx + 5) { // Add some buffer to avoid current stop
+                    nextStopName = stop.name;
+                    foundNextStop = true;
+                    console.log(`✅ Next stop (forward): ${nextStopName}`);
+                    break;
+                  }
+                }
+              } else {
+                // Moving backward in sequence - find previous stop
+                for (let i = stopSequence.length - 1; i >= 0; i--) {
+                  const stopInSequence = stopSequence[i];
+                  const stop = transitData.stops?.find((s: any) => s.id === stopInSequence.stopId);
+                  if (!stop) continue;
+                  
+                  // Find closest shape point to this stop
+                  let closestStopIdx = 0;
+                  let minStopDist = Infinity;
+                  
+                  routeInfo.shapes.forEach((point: any, idx: number) => {
+                    const dist = calculateDistance(
+                      stop.latitude,
+                      stop.longitude,
+                      point.lat,
+                      point.lon
+                    );
+                    if (dist < minStopDist) {
+                      minStopDist = dist;
+                      closestStopIdx = idx;
+                    }
+                  });
+                  
+                  // If this stop is behind the vehicle (in reverse direction)
+                  if (closestStopIdx < closestShapeIdx - 5) { // Add buffer
+                    nextStopName = stop.name;
+                    foundNextStop = true;
+                    console.log(`✅ Next stop (backward): ${nextStopName}`);
+                    break;
+                  }
+                }
+              }
+              
+              if (!foundNextStop) {
+                console.log('⚠️ Could not determine next stop');
               }
             }
             
