@@ -44,7 +44,7 @@ const RouteDisplay = ({ routes, onSelectRoute, selectedRoute }: RouteDisplayProp
         <div
           key={index}
           onClick={() => onSelectRoute(route)}
-          className={`glass-card p-6 rounded-2xl cursor-pointer transition-all ${
+          className={`glass p-6 rounded-2xl cursor-pointer transition-all ${
             selectedRoute === route
               ? 'ring-2 ring-primary bg-primary/10'
               : 'hover:bg-white/5'
@@ -87,7 +87,7 @@ const RouteDisplay = ({ routes, onSelectRoute, selectedRoute }: RouteDisplayProp
                   <div className="absolute left-[23px] top-[60px] w-0.5 h-[calc(100%+16px)] bg-gradient-to-b from-primary/50 to-transparent" />
                 )}
                 
-                <div className="glass p-4 rounded-xl border border-white/10 hover:border-primary/30 transition-colors">
+                <div className="glass-card p-4 rounded-xl hover:border-primary/30 transition-colors">
                   {segment.mode === 'TRANSIT' ? (
                     <div className="flex items-start gap-4">
                       <div className="relative z-10 w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 border-2 border-primary/30">
