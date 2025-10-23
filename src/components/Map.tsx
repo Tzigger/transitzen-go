@@ -121,10 +121,28 @@ const Map = forwardRef<MapRef, MapProps>(({
 
   // Draw vehicle route when vehicle is selected
   useEffect(() => {
-    if (!map.current || !selectedVehicle || !transitData?.routes) return;
+    if (!map.current || !selectedVehicle || !transitData) return;
 
-    // Find the route for this vehicle
-    const route = transitData.routes.find((r: any) => r.route_id === selectedVehicle.routeId);
+    // Find the trip for this vehicle using the route_id
+    const tripId = transitData.routeToTripMap?.[selectedVehicle.routeId];
+    
+    if (!tripId) {
+      console.log('No trip found for vehicle route:', selectedVehicle.routeId);
+      return;
+    }
+
+    // Find the trip to get the shape_id
+    const trip = transitData.trips?.find((t: any) => t.trip_id === tripId);
+    
+    if (!trip || !trip.shape_id) {
+      console.log('No trip or shape_id found for trip:', tripId);
+      return;
+    }
+
+    // Find the route to get the shapes for this shape_id
+    const route = transitData.routes?.find((r: any) => 
+      r.shape_id === trip.shape_id && r.route_id === selectedVehicle.routeId
+    );
     
     if (route && route.shapes && route.shapes.length > 0) {
       // Remove existing vehicle route
@@ -132,18 +150,21 @@ const Map = forwardRef<MapRef, MapProps>(({
         map.current.removeLayer(vehicleRouteLayer.current);
       }
 
-      // Get the route color
+      // Get the route color based on vehicle type
       const routeColor = selectedVehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
 
-      // Draw the vehicle route
+      // Draw the vehicle route as a smooth polyline
       vehicleRouteLayer.current = L.polyline(
         route.shapes.map((point: any) => [point.lat, point.lon]),
         {
           color: routeColor,
           weight: 4,
           opacity: 0.7,
+          smoothFactor: 1,
         }
       ).addTo(map.current);
+
+      console.log(`✅ Drew route for trip ${tripId} with ${route.shapes.length} points`);
     }
 
     return () => {
