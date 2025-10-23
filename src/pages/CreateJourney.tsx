@@ -1,9 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, MapPin, Clock, Bell, Save, Navigation } from "lucide-react";
+import { ArrowLeft, MapPin, Clock, Bell, Save, Navigation, Loader2 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +30,8 @@ const CreateJourney = () => {
   const [origin, setOrigin] = useState(prefilledData?.prefilledOrigin || "");
   const [originCoords, setOriginCoords] = useState(prefilledData?.prefilledOriginCoords || USER_LOCATION);
   const [useCurrentLocation, setUseCurrentLocation] = useState(!prefilledData?.prefilledOrigin);
+  const [currentLocationName, setCurrentLocationName] = useState<string>("Detectare locație...");
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [destination, setDestination] = useState(prefilledData?.prefilledDestination || "");
   const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(
     prefilledData?.prefilledDestinationCoords || null
@@ -86,6 +88,92 @@ const CreateJourney = () => {
   };
 
   const swipeProgress = isSwiping ? Math.min(touchCurrent / 150, 1) : 0;
+
+  // Get user's current location
+  const getCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: "Eroare",
+        description: "Browser-ul tău nu suportă geolocalizare",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoadingLocation(true);
+    setCurrentLocationName("Detectare locație...");
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        
+        setOriginCoords(coords);
+        
+        // Reverse geocode to get location name
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lng}&zoom=16&addressdetails=1`
+          );
+          const data = await response.json();
+          
+          if (data.address) {
+            const locationParts = [];
+            if (data.address.road) locationParts.push(data.address.road);
+            if (data.address.city || data.address.town || data.address.village) {
+              locationParts.push(data.address.city || data.address.town || data.address.village);
+            }
+            setCurrentLocationName(locationParts.join(", ") || "Locația curentă");
+          } else {
+            setCurrentLocationName("Locația curentă");
+          }
+        } catch (error) {
+          setCurrentLocationName("Locația curentă");
+        }
+        
+        setIsLoadingLocation(false);
+        
+        toast({
+          title: "Locație detectată ✓",
+          description: "Am găsit locația ta curentă",
+        });
+      },
+      (error) => {
+        setIsLoadingLocation(false);
+        setCurrentLocationName("Nu s-a putut detecta");
+        
+        let errorMessage = "Nu am putut accesa locația ta";
+        
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMessage = "Permite accesul la locație în setările browser-ului";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = "Locația nu este disponibilă momentan";
+        } else if (error.code === error.TIMEOUT) {
+          errorMessage = "Detectarea locației a expirat";
+        }
+        
+        toast({
+          title: "Eroare geolocalizare",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  // Get location when toggle is enabled
+  useEffect(() => {
+    if (useCurrentLocation && !prefilledData?.prefilledOrigin) {
+      getCurrentLocation();
+    }
+  }, [useCurrentLocation]);
 
   const handleSearch = async (query: string) => {
     if (!query.trim() || query.length < 3) {
@@ -418,9 +506,14 @@ const CreateJourney = () => {
           <div className="glass p-5 rounded-2xl border border-white/10 flex items-center justify-between">
             <div className="flex-1">
               <p className="font-medium text-foreground mb-1">Folosește locația curentă</p>
-              <p className="text-sm text-muted-foreground">
-                Iași, România
-              </p>
+              <div className="flex items-center gap-2">
+                {isLoadingLocation && (
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                )}
+                <p className="text-sm text-muted-foreground">
+                  {currentLocationName}
+                </p>
+              </div>
             </div>
             <Switch 
               checked={useCurrentLocation}
