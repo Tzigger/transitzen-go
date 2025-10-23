@@ -224,8 +224,15 @@ const Map = forwardRef<MapRef, MapProps>(({
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 18, // No clustering at max zoom
       iconCreateFunction: (cluster) => {
         const count = cluster.getChildCount();
+        
+        // Don't cluster if less than 4 vehicles - show individual markers
+        if (count < 4) {
+          return cluster.getAllChildMarkers()[0].options.icon as L.DivIcon;
+        }
+        
         let size = 'small';
         if (count > 20) size = 'large';
         else if (count > 10) size = 'medium';
@@ -247,6 +254,7 @@ const Map = forwardRef<MapRef, MapProps>(({
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 17,
       iconCreateFunction: (cluster) => {
         const count = cluster.getChildCount();
         return L.divIcon({
@@ -670,7 +678,9 @@ const Map = forwardRef<MapRef, MapProps>(({
       
       nearbyStops = nearbyStops.slice(0, 50); // Show more stops when route is selected
 
-      nearbyStops.forEach((stop: any) => {
+      // Only render stops if there are 20 or fewer to avoid clutter at small zoom
+      if (nearbyStops.length <= 20) {
+        nearbyStops.forEach((stop: any) => {
         const stopId = stop.id || `${stop.code}-${stop.latitude}-${stop.longitude}`;
         currentStopIds.add(stopId);
 
@@ -710,6 +720,7 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
         }
       });
+      } // Close the if (nearbyStops.length <= 20) block
 
       // Remove stop markers that are out of range
       stopMarkersRef.current.forEach((marker, id) => {
@@ -821,20 +832,20 @@ const Map = forwardRef<MapRef, MapProps>(({
           background: transparent;
         }
         
-        /* Vehicle Cluster Styles */
+        /* Vehicle Cluster Styles - Orange/Yellow for distinction */
         .vehicle-cluster-marker {
-          background: linear-gradient(135deg, #3B82F6dd, #3B82F6ff);
+          background: linear-gradient(135deg, #f59e0bdd, #f59e0bff);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-          border: 2px solid rgba(255, 255, 255, 0.3);
+          box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
+          border: 3px solid rgba(255, 255, 255, 0.4);
           transition: all 0.3s ease;
         }
         .vehicle-cluster-marker:hover {
-          transform: scale(1.1);
-          box-shadow: 0 6px 16px rgba(59, 130, 246, 0.6);
+          transform: scale(1.15);
+          box-shadow: 0 6px 16px rgba(245, 158, 11, 0.7);
         }
         .vehicle-cluster-small {
           width: 40px;
