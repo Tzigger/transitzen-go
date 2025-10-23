@@ -4,24 +4,37 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, MapPin, Clock, Bell, Save, Navigation } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import RouteDisplay from "@/components/RouteDisplay";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const USER_LOCATION = { lat: 47.1585, lng: 27.6014 };
 
 const CreateJourney = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const notificationsRef = useRef<HTMLDivElement>(null);
-  const [origin, setOrigin] = useState("");
-  const [originCoords, setOriginCoords] = useState(USER_LOCATION);
-  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
-  const [destination, setDestination] = useState("");
-  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Get prefilled data from navigation state
+  const prefilledData = location.state as {
+    prefilledOrigin?: string;
+    prefilledOriginCoords?: { lat: number; lng: number };
+    prefilledDestination?: string;
+    prefilledDestinationCoords?: { lat: number; lng: number };
+  } | null;
+  
+  const [origin, setOrigin] = useState(prefilledData?.prefilledOrigin || "");
+  const [originCoords, setOriginCoords] = useState(prefilledData?.prefilledOriginCoords || USER_LOCATION);
+  const [useCurrentLocation, setUseCurrentLocation] = useState(!prefilledData?.prefilledOrigin);
+  const [destination, setDestination] = useState(prefilledData?.prefilledDestination || "");
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(
+    prefilledData?.prefilledDestinationCoords || null
+  );
+  const [searchQuery, setSearchQuery] = useState(prefilledData?.prefilledDestination || "");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -36,6 +49,8 @@ const CreateJourney = () => {
   const [routes, setRoutes] = useState<any[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [showSaveFavoriteDialog, setShowSaveFavoriteDialog] = useState(false);
+  const [favoriteName, setFavoriteName] = useState("");
   
   // Swipe to close
   const [touchStart, setTouchStart] = useState(0);
@@ -290,6 +305,73 @@ const CreateJourney = () => {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveAsFavorite = async () => {
+    if (!favoriteName.trim()) {
+      toast({
+        title: "Eroare",
+        description: "Te rog introdu un nume pentru traseu",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedRoute) {
+      toast({
+        title: "Eroare",
+        description: "Te rog selectează o rută",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          title: "Eroare",
+          description: "Trebuie să fii autentificat",
+          variant: "destructive",
+        });
+        navigate('/login');
+        return;
+      }
+
+      const { error } = await supabase.from('favorite_routes').insert({
+        user_id: user.id,
+        name: favoriteName.trim(),
+        origin: useCurrentLocation ? "Locația curentă" : origin,
+        origin_lat: originCoords.lat,
+        origin_lng: originCoords.lng,
+        destination: destination.trim(),
+        destination_lat: destinationCoords?.lat,
+        destination_lng: destinationCoords?.lng,
+        route_info: {
+          totalDuration: selectedRoute.totalDuration,
+          totalDistance: selectedRoute.totalDistance,
+          segments: selectedRoute.segments,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success! ⭐",
+        description: "Traseu salvat în favorite",
+      });
+
+      setShowSaveFavoriteDialog(false);
+      setFavoriteName("");
+    } catch (error) {
+      console.error('Error saving favorite route:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut salva traseul favorit",
+        variant: "destructive",
+      });
     }
   };
 
@@ -591,14 +673,24 @@ const CreateJourney = () => {
 
         {/* Save Button */}
         {selectedRoute && (
-          <Button
-          onClick={handleSaveJourney}
-          disabled={isSaving}
-          className="w-full h-16 text-lg font-semibold gradient-primary shadow-2xl rounded-full mb-4 hover:shadow-xl transition-all hover:scale-[1.02] disabled:opacity-50"
-        >
-          <Save className="w-5 h-5 mr-2" />
-          {isSaving ? 'Se salvează...' : 'Planifică călătoria'}
-        </Button>
+          <div className="space-y-3">
+            <Button
+              onClick={handleSaveJourney}
+              disabled={isSaving}
+              className="w-full h-16 text-lg font-semibold gradient-primary shadow-2xl rounded-full mb-2 hover:shadow-xl transition-all hover:scale-[1.02] disabled:opacity-50"
+            >
+              <Save className="w-5 h-5 mr-2" />
+              {isSaving ? 'Se salvează...' : 'Planifică călătoria'}
+            </Button>
+            
+            <Button
+              onClick={() => setShowSaveFavoriteDialog(true)}
+              variant="outline"
+              className="w-full h-14 text-base font-semibold rounded-full border-primary/30 hover:bg-primary/10"
+            >
+              ⭐ Salvează ca favorit
+            </Button>
+          </div>
         )}
       </div>
 
@@ -606,6 +698,41 @@ const CreateJourney = () => {
       <div className="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-40" />
 
       <BottomNav />
+
+      {/* Save as Favorite Dialog */}
+      <Dialog open={showSaveFavoriteDialog} onOpenChange={setShowSaveFavoriteDialog}>
+        <DialogContent className="glass-card">
+          <DialogHeader>
+            <DialogTitle>Salvează ca traseu favorit</DialogTitle>
+            <DialogDescription>
+              Salvează acest traseu pentru a-l accesa rapid mai târziu
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="favorite-name">Nume traseu</Label>
+              <Input
+                id="favorite-name"
+                placeholder="ex: Acasă - Serviciu"
+                value={favoriteName}
+                onChange={(e) => setFavoriteName(e.target.value)}
+                className="h-12 glass border-white/20 rounded-2xl"
+              />
+            </div>
+            <div className="glass p-4 rounded-2xl">
+              <p className="text-sm text-muted-foreground mb-2">Detalii traseu:</p>
+              <p className="text-sm"><strong>De la:</strong> {useCurrentLocation ? "Locația curentă" : origin}</p>
+              <p className="text-sm"><strong>Către:</strong> {destination}</p>
+            </div>
+            <Button
+              onClick={handleSaveAsFavorite}
+              className="w-full h-12 gradient-primary rounded-full"
+            >
+              Salvează
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

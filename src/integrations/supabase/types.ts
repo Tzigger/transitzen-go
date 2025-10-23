@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      favorite_routes: {
+        Row: {
+          created_at: string
+          destination: string
+          destination_lat: number
+          destination_lng: number
+          id: string
+          name: string
+          origin: string
+          origin_lat: number
+          origin_lng: number
+          route_info: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          destination: string
+          destination_lat: number
+          destination_lng: number
+          id?: string
+          name: string
+          origin: string
+          origin_lat: number
+          origin_lng: number
+          route_info?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          destination?: string
+          destination_lat?: number
+          destination_lng?: number
+          id?: string
+          name?: string
+          origin?: string
+          origin_lat?: number
+          origin_lng?: number
+          route_info?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       journeys: {
         Row: {
           arrival_date: string

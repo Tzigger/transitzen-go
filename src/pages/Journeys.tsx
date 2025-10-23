@@ -15,24 +15,22 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-interface Journey {
+interface FavoriteRoute {
   id: string;
   user_id: string;
+  name: string;
   origin: string;
+  origin_lat: number;
+  origin_lng: number;
   destination: string;
-  arrival_date: string;
-  arrival_time: string;
-  departure_time: string | null;
-  estimated_duration: number;
-  is_active: boolean;
-  route_details: {
-    segments: any[];
-    totalDistance: string;
-  };
-  notify_departure: boolean;
-  notify_delays: boolean;
-  notify_crowding: boolean;
-  notify_route_changes: boolean;
+  destination_lat: number;
+  destination_lng: number;
+  route_info: {
+    totalDuration?: number;
+    totalDistance?: string;
+    segments?: any[];
+    averageCrowding?: number;
+  } | null;
   created_at: string;
 }
 
@@ -41,14 +39,14 @@ const Journeys = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
-  const [journeys, setJourneys] = useState<Journey[]>([]);
+  const [routes, setRoutes] = useState<FavoriteRoute[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchJourneys();
+    fetchFavoriteRoutes();
   }, []);
 
-  const fetchJourneys = async () => {
+  const fetchFavoriteRoutes = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -58,19 +56,19 @@ const Journeys = () => {
       }
 
       const { data, error } = await supabase
-        .from('journeys')
+        .from('favorite_routes')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      setJourneys((data || []) as unknown as Journey[]);
+      setRoutes((data || []) as unknown as FavoriteRoute[]);
     } catch (error) {
-      console.error('Error fetching journeys:', error);
+      console.error('Error fetching favorite routes:', error);
       toast({
         title: "Eroare",
-        description: "Nu am putut încărca traseele tale",
+        description: "Nu am putut încărca traseele tale favorite",
         variant: "destructive",
       });
     } finally {
@@ -78,50 +76,23 @@ const Journeys = () => {
     }
   };
 
-  const handleToggleActive = async (journeyId: string, isActive: boolean) => {
+  const handleDeleteRoute = async (routeId: string) => {
     try {
       const { error } = await supabase
-        .from('journeys')
-        .update({ is_active: !isActive })
-        .eq('id', journeyId);
-
-      if (error) throw error;
-
-      setJourneys(journeys.map(j => 
-        j.id === journeyId ? { ...j, is_active: !isActive } : j
-      ));
-
-      toast({
-        title: "Succes",
-        description: `Traseu ${!isActive ? 'activat' : 'dezactivat'}`,
-      });
-    } catch (error) {
-      console.error('Error toggling journey:', error);
-      toast({
-        title: "Eroare",
-        description: "Nu am putut actualiza traseul",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDeleteJourney = async (journeyId: string) => {
-    try {
-      const { error } = await supabase
-        .from('journeys')
+        .from('favorite_routes')
         .delete()
-        .eq('id', journeyId);
+        .eq('id', routeId);
 
       if (error) throw error;
 
-      setJourneys(journeys.filter(j => j.id !== journeyId));
+      setRoutes(routes.filter(r => r.id !== routeId));
 
       toast({
         title: "Succes",
         description: "Traseu șters cu succes",
       });
     } catch (error) {
-      console.error('Error deleting journey:', error);
+      console.error('Error deleting route:', error);
       toast({
         title: "Eroare",
         description: "Nu am putut șterge traseul",
@@ -130,16 +101,29 @@ const Journeys = () => {
     }
   };
 
-  const filteredJourneys = journeys.filter(journey =>
-    journey.destination.toLowerCase().includes(searchQuery.toLowerCase())
+  const handlePlanJourney = (route: FavoriteRoute) => {
+    // Navigate to create-journey with pre-filled data
+    navigate('/create-journey', {
+      state: {
+        prefilledOrigin: route.origin,
+        prefilledOriginCoords: { lat: route.origin_lat, lng: route.origin_lng },
+        prefilledDestination: route.destination,
+        prefilledDestinationCoords: { lat: route.destination_lat, lng: route.destination_lng },
+      }
+    });
+  };
+
+  const filteredRoutes = routes.filter(route =>
+    route.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    route.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const sortedJourneys = [...filteredJourneys].sort((a, b) => {
+  const sortedRoutes = [...filteredRoutes].sort((a, b) => {
     switch (sortBy) {
       case 'destination':
         return a.destination.localeCompare(b.destination);
-      case 'time':
-        return (a.arrival_time || '').localeCompare(b.arrival_time || '');
+      case 'name':
+        return a.name.localeCompare(b.name);
       case 'recent':
       default:
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -160,14 +144,14 @@ const Journeys = () => {
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <h1 className="text-xl font-bold text-foreground flex-1">Traseele mele</h1>
+            <h1 className="text-xl font-bold text-foreground flex-1">Trasee favorite</h1>
             <Button 
               onClick={() => navigate('/create-journey')}
               size="sm" 
               className="gradient-primary rounded-full px-4 h-10 shadow-lg hover:shadow-xl transition-all"
             >
               <Plus className="w-4 h-4 mr-1" />
-              Nou
+              Adaugă
             </Button>
           </div>
         </div>
@@ -176,31 +160,22 @@ const Journeys = () => {
       <div className="px-4 space-y-4 max-w-md mx-auto">
         {/* Stats Summary */}
         <div className="glass-card p-5 rounded-[2rem] shadow-xl">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
               <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-2">
                 <MapPin className="w-6 h-6 text-primary" />
               </div>
-              <p className="text-2xl font-bold text-foreground">{journeys.length}</p>
-              <p className="text-xs text-muted-foreground">Trasee</p>
+              <p className="text-2xl font-bold text-foreground">{routes.length}</p>
+              <p className="text-xs text-muted-foreground">Trasee salvate</p>
             </div>
             <div className="text-center">
               <div className="w-12 h-12 rounded-2xl bg-success/20 flex items-center justify-center mx-auto mb-2">
                 <Calendar className="w-6 h-6 text-success" />
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {journeys.filter(j => j.is_active).length}
+                {routes.filter(r => r.route_info).length}
               </p>
-              <p className="text-xs text-muted-foreground">Active</p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 rounded-2xl bg-warning/20 flex items-center justify-center mx-auto mb-2">
-                <Filter className="w-6 h-6 text-warning" />
-              </div>
-              <p className="text-2xl font-bold text-foreground">
-                {journeys.filter(j => !j.is_active).length}
-              </p>
-              <p className="text-xs text-muted-foreground">Inactive</p>
+              <p className="text-xs text-muted-foreground">Cu rute calculate</p>
             </div>
           </div>
         </div>
@@ -226,13 +201,13 @@ const Journeys = () => {
               <SelectContent className="glass-card border-white/10">
                 <SelectItem value="recent">Cele mai recente</SelectItem>
                 <SelectItem value="destination">Destinație A-Z</SelectItem>
-                <SelectItem value="time">Oră plecare</SelectItem>
+                <SelectItem value="name">Nume A-Z</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
 
-        {/* Journeys List */}
+        {/* Routes List */}
         <div className="space-y-3 pb-4">
           {isLoading ? (
             <div className="glass-card p-8 rounded-[2rem] text-center">
@@ -241,13 +216,13 @@ const Journeys = () => {
               </div>
               <p className="text-sm text-muted-foreground">Se încarcă traseele...</p>
             </div>
-          ) : sortedJourneys.length > 0 ? (
-            sortedJourneys.map((journey) => (
+          ) : sortedRoutes.length > 0 ? (
+            sortedRoutes.map((route) => (
               <JourneyCard 
-                key={journey.id} 
-                journey={journey}
-                onToggleActive={handleToggleActive}
-                onDelete={handleDeleteJourney}
+                key={route.id} 
+                route={route}
+                onPlanJourney={handlePlanJourney}
+                onDelete={handleDeleteRoute}
               />
             ))
           ) : (
@@ -256,12 +231,12 @@ const Journeys = () => {
                 <MapPin className="w-8 h-8 text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">
-                Nu s-au găsit trasee
+                Nu s-au găsit trasee favorite
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {searchQuery 
                   ? "Încearcă să schimbi criteriile de căutare"
-                  : "Adaugă primul tău traseu pentru a începe"}
+                  : "Salvează primul tău traseu favorit pentru acces rapid"}
               </p>
               {!searchQuery && (
                 <Button 
@@ -269,7 +244,7 @@ const Journeys = () => {
                   className="gradient-primary rounded-full px-6 h-12 shadow-lg"
                 >
                   <Plus className="w-5 h-5 mr-2" />
-                  Creează traseu
+                  Adaugă traseu favorit
                 </Button>
               )}
             </div>
