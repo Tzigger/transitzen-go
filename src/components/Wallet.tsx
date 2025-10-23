@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Ticket, Clock, CheckCircle2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/convex";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -11,27 +13,26 @@ import {
 } from "@/components/ui/dialog";
 
 type TicketData = {
-  id: string;
-  ticket_id: string;
-  ticket_type: string;
-  price: number;
-  payment_status: string;
-  issued_at: string;
-  expires_at: string;
-  qr_data: any;
+  _id: string;
+  userId: string;
+  amount: number;
+  type: "credit" | "debit";
+  description: string;
+  balance: number;
+  _creationTime: number;
 };
 
 const Wallet = () => {
-  const [tickets, setTickets] = useState<TicketData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedTicket, setSelectedTicket] = useState<TicketData | null>(null);
+  const { userId } = useAuth();
+  const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [qrKey, setQrKey] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(30);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchTickets();
-  }, []);
+  // Convex queries
+  const tickets = useQuery(api.tickets.getTickets, userId ? { userId } : "skip") || [];
+  const walletData = useQuery(api.wallet.getWalletBalance, userId ? { userId } : "skip");
+  const balance = walletData?.balance || 0;
 
   useEffect(() => {
     if (!selectedTicket) return;
@@ -59,48 +60,11 @@ const Wallet = () => {
     if (!selectedTicket) return "";
 
     return JSON.stringify({
-      ...selectedTicket.qr_data,
+      ...selectedTicket.qrData,
       refreshedAt: Date.now(),
       qrVersion: qrKey,
     });
   }, [selectedTicket, qrKey]);
-
-  const fetchTickets = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          title: "Eroare",
-          description: "Nu ești autentificat",
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("tickets")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching tickets:", error);
-        toast({
-          title: "Eroare",
-          description: "Nu s-au putut încărca biletele",
-          variant: "destructive",
-        });
-      } else {
-        setTickets(data || []);
-      }
-    } catch (error) {
-      console.error("Error:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const isTicketExpired = (expiresAt: string) => {
     return new Date(expiresAt) < new Date();
@@ -125,14 +89,6 @@ const Wallet = () => {
     return types[type] || type;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-6">
@@ -148,11 +104,11 @@ const Wallet = () => {
       ) : (
         <div className="space-y-3">
           {tickets.map((ticket) => {
-            const expired = isTicketExpired(ticket.expires_at);
+            const expired = isTicketExpired(ticket.expiresAt);
             
             return (
               <div
-                key={ticket.id}
+                key={ticket._id}
                 onClick={() => !expired && setSelectedTicket(ticket)}
                 className={`glass p-5 rounded-[2rem] border-white/10 transition-all ${
                   expired ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-white/5"
@@ -167,11 +123,11 @@ const Wallet = () => {
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
                       )}
                       <span className="font-semibold text-foreground">
-                        {getTicketTypeName(ticket.ticket_type)}
+                        {getTicketTypeName(ticket.ticketType)}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground font-mono">
-                      {ticket.ticket_id}
+                      {ticket.ticketId}
                     </p>
                   </div>
                   <div className="text-right">
@@ -187,11 +143,11 @@ const Wallet = () => {
                 <div className="flex items-center justify-between text-sm pt-3 border-t border-white/10">
                   <div>
                     <p className="text-muted-foreground">Emis:</p>
-                    <p className="text-foreground">{formatDate(ticket.issued_at)}</p>
+                    <p className="text-foreground">{formatDate(new Date(ticket._creationTime).toISOString())}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-muted-foreground">Expiră:</p>
-                    <p className="text-foreground">{formatDate(ticket.expires_at)}</p>
+                    <p className="text-foreground">{formatDate(ticket.expiresAt)}</p>
                   </div>
                 </div>
               </div>
@@ -213,11 +169,11 @@ const Wallet = () => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Tip bilet:</span>
-                    <span className="font-semibold">{getTicketTypeName(selectedTicket.ticket_type)}</span>
+                    <span className="font-semibold">{getTicketTypeName(selectedTicket.ticketType)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">ID:</span>
-                    <span className="font-mono text-xs">{selectedTicket.ticket_id}</span>
+                    <span className="font-mono text-xs">{selectedTicket.ticketId}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Preț:</span>

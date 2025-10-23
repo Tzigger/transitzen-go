@@ -1,0 +1,9 @@
+{
+  "node": {
+    "version": "18"
+  },
+  "deployment": {
+    "type": "self-hosted",
+    "url": "http://localhost:3210"
+  }
+}

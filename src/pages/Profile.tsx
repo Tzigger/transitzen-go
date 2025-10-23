@@ -18,101 +18,65 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/convex";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { useTheme } from "next-themes";
 
 const Profile = () => {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const { userId, email: userEmail, clearSession } = useAuth();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string>("");
   const [lastName, setLastName] = useState<string>("");
-  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [tempFirstName, setTempFirstName] = useState("");
   const [tempLastName, setTempLastName] = useState("");
 
+  // Convex queries and mutations
+  const profile = useQuery(api.profiles.getProfile, userId ? { userId } : "skip");
+  const preferences = useQuery(api.profiles.getPreferences, userId ? { userId } : "skip");
+  const updateProfileMutation = useMutation(api.profiles.updateProfile);
+  const updatePreferencesMutation = useMutation(api.profiles.updatePreferences);
+  const deleteAccountMutation = useMutation(api.auth.deleteAccount);
+
   useEffect(() => {
-    // Check if user is logged in and fetch profile
-    const fetchProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate("/login");
-        return;
-      }
+    // Check if user is logged in
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+  }, [userId, navigate]);
 
-      setUserEmail(session.user.email || null);
-      setUserId(session.user.id);
-
-      // Load profile data
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (profile) {
-        setFirstName(profile.first_name || '');
-        setLastName(profile.last_name || '');
-        setTempFirstName(profile.first_name || '');
-        setTempLastName(profile.last_name || '');
-      }
-
-      // Load user preferences
-      const { data: preferences, error } = await supabase
-        .from('user_preferences')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
-
-      if (error) {
-        // Error loading preferences
-      } else if (preferences) {
-        setNotificationsEnabled(preferences.notifications_enabled);
-        if (preferences.dark_mode_enabled) {
-          setTheme('dark');
-        } else {
-          setTheme('light');
-        }
-      } else {
-        // Create default preferences if they don't exist
-        const { error: insertError } = await supabase
-          .from('user_preferences')
-          .insert({
-            user_id: session.user.id,
-            notifications_enabled: true,
-            dark_mode_enabled: true,
-            language: 'ro',
-            units: 'km'
-          });
-
-        if (insertError) {
-          // Error creating default preferences
-        }
-      }
-
+  useEffect(() => {
+    // Load profile data when it's available
+    if (profile) {
+      setFirstName(profile.firstName || '');
+      setLastName(profile.lastName || '');
+      setTempFirstName(profile.firstName || '');
+      setTempLastName(profile.lastName || '');
       setLoading(false);
-    };
+    }
+  }, [profile]);
 
-    fetchProfile();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate("/login");
+  useEffect(() => {
+    // Load preferences when available
+    if (preferences) {
+      setNotificationsEnabled(preferences.notificationsEnabled);
+      if (preferences.darkModeEnabled) {
+        setTheme('dark');
+      } else {
+        setTheme('light');
       }
-    });
+    }
+  }, [preferences, setTheme]);
 
-    return () => subscription.unsubscribe();
-  }, [navigate, setTheme]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    clearSession();
     toast({
       title: "Deconectat",
       description: "Ai fost deconectat cu succes",
@@ -127,32 +91,9 @@ const Profile = () => {
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      await deleteAccountMutation({ userId });
       
-      if (!session) {
-        toast({
-          title: "Eroare",
-          description: "Trebuie să fii autentificat",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/delete-user-account`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete account');
-      }
-
-      // Sign out and redirect
-      await supabase.auth.signOut();
+      clearSession();
       
       toast({
         title: "Cont șters",
@@ -162,7 +103,6 @@ const Profile = () => {
       setShowDeleteDialog(false);
       navigate("/");
     } catch (error) {
-      // Error deleting account
       toast({
         title: "Eroare",
         description: "Nu am putut șterge contul. Te rog încearcă din nou.",
@@ -192,21 +132,13 @@ const Profile = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ 
-        first_name: tempFirstName.trim(), 
-        last_name: tempLastName.trim() 
-      })
-      .eq('id', userId);
-
-    if (error) {
-      toast({
-        title: "Eroare",
-        description: "Nu am putut salva modificările",
-        variant: "destructive"
+    try {
+      await updateProfileMutation({ 
+        userId, 
+        firstName: tempFirstName.trim(), 
+        lastName: tempLastName.trim() 
       });
-    } else {
+
       setFirstName(tempFirstName.trim());
       setLastName(tempLastName.trim());
       setEditMode(false);
@@ -214,19 +146,23 @@ const Profile = () => {
         title: "Profil actualizat",
         description: "Modificările au fost salvate cu succes"
       });
+    } catch (error) {
+      toast({
+        title: "Eroare",
+        description: "Nu am putut salva modificările",
+        variant: "destructive"
+      });
     }
   };
 
   const updatePreference = async (field: string, value: any) => {
     if (!userId) return;
 
-    const { error } = await supabase
-      .from('user_preferences')
-      .update({ [field]: value })
-      .eq('user_id', userId);
-
-    if (error) {
-      // Error updating preference
+    try {
+      const args: any = { userId };
+      args[field] = value;
+      await updatePreferencesMutation(args);
+    } catch (error) {
       toast({
         title: "Eroare",
         description: "Nu am putut salva preferința",
@@ -237,7 +173,7 @@ const Profile = () => {
 
   const handleNotificationsToggle = async (checked: boolean) => {
     setNotificationsEnabled(checked);
-    await updatePreference('notifications_enabled', checked);
+    await updatePreference('notificationsEnabled', checked);
     toast({
       title: checked ? "Notificări activate" : "Notificări dezactivate",
       description: checked ? "Vei primi notificări push" : "Nu vei mai primi notificări"
@@ -247,7 +183,7 @@ const Profile = () => {
   const handleDarkModeToggle = async (checked: boolean) => {
     const newTheme = checked ? 'dark' : 'light';
     setTheme(newTheme);
-    await updatePreference('dark_mode_enabled', checked);
+    await updatePreference('darkModeEnabled', checked);
     toast({
       title: checked ? "Modul întunecat activat" : "Modul luminos activat",
       description: "Tema a fost schimbată"

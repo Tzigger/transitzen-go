@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/drawer';
 import { StopArrivalsDrawer } from './StopArrivalsDrawer';
 import { useTheme } from 'next-themes';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 
 // Fix for default markers
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -67,7 +69,10 @@ const Map = forwardRef<MapRef, MapProps>(({
   const vehicleClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
   const vehicleMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const stopMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
-  const [transitData, setTransitData] = useState<any>(null);
+  
+  // Get transit data from Convex database (auto-updates via subscription)
+  const transitData = useQuery(api.transit.getTransitData);
+  
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mapBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
@@ -177,61 +182,16 @@ const Map = forwardRef<MapRef, MapProps>(({
     };
   }, [selectedRoute]);
 
-  // Draw vehicle route when vehicle is selected
+  // Note: Vehicle route drawing removed - routes shown only from filters or stop selection
+
+  // Clean up vehicle route when dialog closes
   useEffect(() => {
-    if (!map.current || !selectedVehicle || !transitData) return;
-
-    // Find the trip for this vehicle using the route_id
-    const tripId = transitData.routeToTripMap?.[selectedVehicle.routeId];
-    
-    if (!tripId) {
-      console.log('No trip found for vehicle route:', selectedVehicle.routeId);
-      return;
+    if (!isVehicleDialogOpen && vehicleRouteLayer.current && map.current) {
+      map.current.removeLayer(vehicleRouteLayer.current);
+      vehicleRouteLayer.current = null;
+      console.log('🧹 Cleaned up vehicle route on dialog close');
     }
-
-    // Find the trip to get the shape_id
-    const trip = transitData.trips?.find((t: any) => t.trip_id === tripId);
-    
-    if (!trip || !trip.shape_id) {
-      console.log('No trip or shape_id found for trip:', tripId);
-      return;
-    }
-
-    // Find the route to get the shapes for this shape_id
-    const route = transitData.routes?.find((r: any) => 
-      r.shape_id === trip.shape_id && r.route_id === selectedVehicle.routeId
-    );
-    
-    if (route && route.shapes && route.shapes.length > 0) {
-      // Remove existing vehicle route
-      if (vehicleRouteLayer.current) {
-        map.current.removeLayer(vehicleRouteLayer.current);
-      }
-
-      // Get the route color based on vehicle type
-      const routeColor = selectedVehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
-
-      // Draw the vehicle route as a smooth polyline
-      vehicleRouteLayer.current = L.polyline(
-        route.shapes.map((point: any) => [point.lat, point.lon]),
-        {
-          color: routeColor,
-          weight: 4,
-          opacity: 0.7,
-          smoothFactor: 1,
-        }
-      ).addTo(map.current);
-
-      console.log(`✅ Drew route for trip ${tripId} with ${route.shapes.length} points`);
-    }
-
-    return () => {
-      if (vehicleRouteLayer.current && map.current) {
-        map.current.removeLayer(vehicleRouteLayer.current);
-        vehicleRouteLayer.current = null;
-      }
-    };
-  }, [selectedVehicle, transitData]);
+  }, [isVehicleDialogOpen]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -304,8 +264,10 @@ const Map = forwardRef<MapRef, MapProps>(({
 
     L.marker([center.lat, center.lng], { icon: userIcon }).addTo(map.current);
 
-    // Add map move event listener for viewport updates
+    // Add map move and zoom event listeners for viewport updates
     let moveTimeout: NodeJS.Timeout;
+    let zoomTimeout: NodeJS.Timeout;
+    
     map.current.on('moveend', () => {
       clearTimeout(moveTimeout);
       moveTimeout = setTimeout(() => {
@@ -314,9 +276,18 @@ const Map = forwardRef<MapRef, MapProps>(({
       }, 300);
     });
 
+    map.current.on('zoomend', () => {
+      clearTimeout(zoomTimeout);
+      zoomTimeout = setTimeout(() => {
+        updateMapBounds();
+        updateMarkers();
+      }, 400); // Longer delay for zoom to allow animation to complete
+    });
+
     // Cleanup
     return () => {
       clearTimeout(moveTimeout);
+      clearTimeout(zoomTimeout);
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
       }
@@ -358,33 +329,6 @@ const Map = forwardRef<MapRef, MapProps>(({
     }
   }, []);
 
-  // Fetch transit data with viewport filtering
-  const fetchTransitData = useCallback(async () => {
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/get-transit-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTransitData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching transit data:', error);
-    }
-  }, []);
-
-  // Initial data fetch and periodic updates
-  useEffect(() => {
-    fetchTransitData();
-    const interval = setInterval(fetchTransitData, 30000);
-    return () => clearInterval(interval);
-  }, [fetchTransitData]);
-
   // Check if a point is within current viewport
   const isInViewport = useCallback((lat: number, lng: number): boolean => {
     if (!mapBoundsRef.current) return true;
@@ -400,272 +344,171 @@ const Map = forwardRef<MapRef, MapProps>(({
     if (!immediate) {
       updateTimeoutRef.current = setTimeout(() => {
         updateTimeoutRef.current = null;
-      }, 200);
+      }, 300); // Increased throttle time to 300ms
     }
 
     const doUpdate = () => {
-      const currentVehicleIds = new Set<string>();
-      const currentStopIds = new Set<string>();
+      try {
+        const currentVehicleIds = new Set<string>();
+        const currentStopIds = new Set<string>();
 
-      // Get current map bounds
-      updateMapBounds();
+        // Get current map bounds and zoom
+        updateMapBounds();
+        const currentZoom = map.current?.getZoom() || 13;
 
-      // Filter vehicles: by route if selected, by viewport always, and by vehicle type
-      const activeRouteFilter = selectedRoute ? selectedRoute.route_id : null;
-      const hasManualFilters = filteredRoutes.length > 0;
-      
-      console.log('🔍 Filtering with selectedVehicleTypes:', selectedVehicleTypes);
-      
-      const filteredVehicles = transitData.vehicles?.filter((v: any) => {
-        // Filter by vehicle type - look up the route to get its type
-        const vehicleRoute = transitData.routes?.find((r: any) => r.route_id === v.routeId);
-        if (!vehicleRoute) return false;
+        // Filter vehicles: by route if selected, by viewport always, and by vehicle type
+        const activeRouteFilter = selectedRoute ? selectedRoute.route_id : null;
+        const hasManualFilters = filteredRoutes.length > 0;
         
-        const vehicleType = vehicleRoute.route_type === 0 ? 'tram' : 'bus';
-        const typeMatch = selectedVehicleTypes.includes(vehicleType);
+        console.log('🔍 Filtering with selectedVehicleTypes:', selectedVehicleTypes);
         
-        if (!typeMatch) {
-          return false;
-        }
-        
-        // If a route is selected from stop drawer, show only that route
-        if (activeRouteFilter) {
-          return v.routeId === activeRouteFilter;
-        }
-        // If manual filters are active, show only filtered routes
-        if (hasManualFilters) {
-          return filteredRoutes.includes(v.routeId?.toString());
-        }
-        // Otherwise show all
-        return true;
-      });
-      
-      console.log(`🚍 Filtered vehicles: ${filteredVehicles?.length || 0} out of ${transitData.vehicles?.length || 0}`);
+        let filteredVehicles = transitData.vehicles?.filter((v: any) => {
+          try {
+            // Validate coordinates first
+            if (!v.latitude || !v.longitude || 
+                typeof v.latitude !== 'number' || 
+                typeof v.longitude !== 'number' ||
+                isNaN(v.latitude) || isNaN(v.longitude)) {
+              return false;
+            }
 
-      filteredVehicles?.forEach((vehicle: any) => {
-        // Validate coordinates
-        if (!vehicle.latitude || !vehicle.longitude || 
-            typeof vehicle.latitude !== 'number' || 
-            typeof vehicle.longitude !== 'number') {
-          return;
-        }
+            // CRITICAL: Only show vehicles that have a valid route with shapes
+            const vehicleRoute = transitData.routes?.find((r: any) => r.route_id === v.routeId);
+            if (!vehicleRoute || !vehicleRoute.shapes || vehicleRoute.shapes.length === 0) {
+              return false; // Skip vehicles without valid routes/shapes
+            }
 
-        // Filter out vehicles with no recent activity (older than 30 minutes)
-        if (vehicle.timestamp) {
-          const vehicleTime = new Date(vehicle.timestamp).getTime();
-          const currentTime = Date.now();
-          const thirtyMinutesInMs = 30 * 60 * 1000;
-          
-          if (currentTime - vehicleTime > thirtyMinutesInMs) {
-            return;
-          }
-        }
+            // Filter by viewport - only show vehicles in current view
+            if (!isInViewport(v.latitude, v.longitude)) {
+              return false;
+            }
 
-        // Skip if not in viewport AND not on selected route
-        if (!isInViewport(vehicle.latitude, vehicle.longitude) && !selectedRoute) {
-          return;
-        }
-
-        const vehicleId = vehicle.id || `${vehicle.routeShortName}-${vehicle.latitude}-${vehicle.longitude}`;
-        
-        // Check route number before adding to current set
-        const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
-        const routeNumber = vehicle.label || routeInfo?.route_short_name || '?';
-        
-        // Don't render vehicles with "?" as route number
-        if (routeNumber === '?') {
-          // Remove if it exists
-          const existingMarker = vehicleMarkersRef.current.get(vehicleId);
-          if (existingMarker) {
-            existingMarker.remove();
-            vehicleMarkersRef.current.delete(vehicleId);
-          }
-          return;
-        }
-        
-        currentVehicleIds.add(vehicleId);
-
-        const existingMarker = vehicleMarkersRef.current.get(vehicleId);
-
-        if (existingMarker) {
-          // Update existing marker position smoothly
-          existingMarker.setLatLng([vehicle.latitude, vehicle.longitude]);
-        } else {
-          // Create new marker - determine color based on multiple routes selection
-          const vehicleColor = getRouteColor(vehicle.routeId?.toString(), vehicle.vehicle_type);
-          const isAccessible = vehicle.wheelchair_accessible === 'WHEELCHAIR_ACCESSIBLE';
-          
-          const vehicleIcon = L.divIcon({
-            className: 'custom-vehicle-marker',
-            html: `
-              <div class="relative cursor-pointer group">
-                <div class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg border-2 border-white/30 transition-all duration-300 group-hover:scale-110 group-hover:shadow-xl" 
-                     style="background: linear-gradient(135deg, ${vehicleColor}dd, ${vehicleColor}ff);">
-                  <span class="text-white font-bold text-sm drop-shadow-lg">${routeNumber}</span>
-                </div>
-                ${isAccessible ? '<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center"><span class="text-white text-[10px]">♿</span></div>' : ''}
-              </div>
-            `,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20],
-          });
-
-          const marker = L.marker([vehicle.latitude, vehicle.longitude], { 
-            icon: vehicleIcon,
-          });
-
-          marker.on('click', () => {
-            // Find route info for this vehicle - vehicle has routeId from formatting
-            const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
+            // Filter by vehicle type (0=tram, 1=bus)
+            const vehicleType = v.vehicle_type === 0 ? 'tram' : 'bus';
+            const typeMatch = selectedVehicleTypes.includes(vehicleType);
             
-            // Find trip for this vehicle's route
-            const tripId = transitData.routeToTripMap?.[vehicle.routeId];
-            let nextStopName = 'Necunoscut';
-            
-            if (tripId && transitData.tripStopSequences?.[tripId] && routeInfo?.shapes && routeInfo.shapes.length > 1) {
-              // Get stop sequence for this trip
-              const stopSequence = transitData.tripStopSequences[tripId];
-              
-              // Find closest shape point to vehicle
-              let closestShapeIdx = 0;
-              let minDist = Infinity;
-              
-              routeInfo.shapes.forEach((point: any, idx: number) => {
-                const dist = calculateDistance(
-                  vehicle.latitude,
-                  vehicle.longitude,
-                  point.lat,
-                  point.lon
-                );
-                if (dist < minDist) {
-                  minDist = dist;
-                  closestShapeIdx = idx;
-                }
-              });
-              
-              // Determine vehicle direction by comparing with next/previous shape points
-              // Calculate bearing/direction to understand if moving forward or backward on route
-              let isMovingForward = true;
-              
-              if (closestShapeIdx > 0 && closestShapeIdx < routeInfo.shapes.length - 1) {
-                const prevPoint = routeInfo.shapes[closestShapeIdx - 1];
-                const nextPoint = routeInfo.shapes[closestShapeIdx + 1];
-                
-                // Calculate distances to previous and next points
-                const distToPrev = calculateDistance(
-                  vehicle.latitude,
-                  vehicle.longitude,
-                  prevPoint.lat,
-                  prevPoint.lon
-                );
-                
-                const distToNext = calculateDistance(
-                  vehicle.latitude,
-                  vehicle.longitude,
-                  nextPoint.lat,
-                  nextPoint.lon
-                );
-                
-                // If we're closer to previous point than next, we're likely moving backward
-                // Also consider vehicle speed - if speed is > 0, use bearing direction
-                if (vehicle.speed > 5) {
-                  // For vehicles with good speed, assume forward movement
-                  isMovingForward = distToNext <= distToPrev;
-                }
-              }
-              
-              console.log(`🚌 Vehicle ${vehicle.id} at shape index ${closestShapeIdx}, moving ${isMovingForward ? 'forward' : 'backward'}`);
-              
-              // Find the next stop based on direction
-              let foundNextStop = false;
-              
-              if (isMovingForward) {
-                // Moving forward in sequence - find next stop ahead
-                for (const stopInSequence of stopSequence) {
-                  const stop = transitData.stops?.find((s: any) => s.id === stopInSequence.stopId);
-                  if (!stop) continue;
-                  
-                  // Find closest shape point to this stop
-                  let closestStopIdx = 0;
-                  let minStopDist = Infinity;
-                  
-                  routeInfo.shapes.forEach((point: any, idx: number) => {
-                    const dist = calculateDistance(
-                      stop.latitude,
-                      stop.longitude,
-                      point.lat,
-                      point.lon
-                    );
-                    if (dist < minStopDist) {
-                      minStopDist = dist;
-                      closestStopIdx = idx;
-                    }
-                  });
-                  
-                  // If this stop is ahead of the vehicle
-                  if (closestStopIdx > closestShapeIdx + 5) { // Add some buffer to avoid current stop
-                    nextStopName = stop.name;
-                    foundNextStop = true;
-                    console.log(`✅ Next stop (forward): ${nextStopName}`);
-                    break;
-                  }
-                }
-              } else {
-                // Moving backward in sequence - find previous stop
-                for (let i = stopSequence.length - 1; i >= 0; i--) {
-                  const stopInSequence = stopSequence[i];
-                  const stop = transitData.stops?.find((s: any) => s.id === stopInSequence.stopId);
-                  if (!stop) continue;
-                  
-                  // Find closest shape point to this stop
-                  let closestStopIdx = 0;
-                  let minStopDist = Infinity;
-                  
-                  routeInfo.shapes.forEach((point: any, idx: number) => {
-                    const dist = calculateDistance(
-                      stop.latitude,
-                      stop.longitude,
-                      point.lat,
-                      point.lon
-                    );
-                    if (dist < minStopDist) {
-                      minStopDist = dist;
-                      closestStopIdx = idx;
-                    }
-                  });
-                  
-                  // If this stop is behind the vehicle (in reverse direction)
-                  if (closestStopIdx < closestShapeIdx - 5) { // Add buffer
-                    nextStopName = stop.name;
-                    foundNextStop = true;
-                    console.log(`✅ Next stop (backward): ${nextStopName}`);
-                    break;
-                  }
-                }
-              }
-              
-              if (!foundNextStop) {
-                console.log('⚠️ Could not determine next stop');
-              }
+            if (!typeMatch) {
+              return false;
             }
             
-            setSelectedVehicle({ ...vehicle, routeInfo, next_stop_name: nextStopName });
-            setIsVehicleDialogOpen(true);
-          });
+            // If a route is selected from stop drawer, show only that route
+            if (activeRouteFilter) {
+              return v.routeId === activeRouteFilter;
+            }
+            // If manual filters are active, show only filtered routes
+            if (hasManualFilters) {
+              return filteredRoutes.includes(v.routeId?.toString());
+            }
+            // Otherwise show all
+            return true;
+          } catch (error) {
+            console.error('Error filtering vehicle:', v.id, error);
+            return false;
+          }
+        }) || [];
 
-          vehicleMarkersRef.current.set(vehicleId, marker);
-          
-          // Add to cluster group instead of map
-          if (vehicleClusterGroup.current) {
-            vehicleClusterGroup.current.addLayer(marker);
+        // Limit number of vehicles at low zoom levels to prevent overload
+        const maxVehicles = currentZoom < 14 ? 50 : currentZoom < 16 ? 100 : 200;
+        if (filteredVehicles.length > maxVehicles) {
+          // Sort by distance from center and take closest ones
+          const center = map.current?.getCenter();
+          if (center) {
+            filteredVehicles = filteredVehicles
+              .map((v: any) => ({
+                ...v,
+                distanceFromCenter: calculateDistance(center.lat, center.lng, v.latitude, v.longitude)
+              }))
+              .sort((a: any, b: any) => a.distanceFromCenter - b.distanceFromCenter)
+              .slice(0, maxVehicles);
           }
         }
-      });
+        
+        console.log(`🚍 Filtered vehicles: ${filteredVehicles.length} out of ${transitData.vehicles?.length || 0} (zoom: ${currentZoom}, max: ${maxVehicles})`);
 
-      // Remove markers that are no longer in data or out of range
-      vehicleMarkersRef.current.forEach((marker, id) => {
-        if (!currentVehicleIds.has(id)) {
-          if (vehicleClusterGroup.current) {
+        // Process vehicles with additional safety checks
+        filteredVehicles?.forEach((vehicle: any) => {
+          try {
+            // Double-check coordinates (should already be validated but be safe)
+            if (!vehicle.latitude || !vehicle.longitude || 
+                typeof vehicle.latitude !== 'number' || 
+                typeof vehicle.longitude !== 'number' ||
+                isNaN(vehicle.latitude) || isNaN(vehicle.longitude)) {
+              return;
+            }
+
+            const vehicleId = vehicle.id || `${vehicle.routeId}-${vehicle.latitude}-${vehicle.longitude}`;
+            
+            // Get route info - must exist due to filtering above
+            const routeInfo = transitData.routes?.find((r: any) => r.route_id === vehicle.routeId);
+            if (!routeInfo) return; // Extra safety check
+            
+            // Use route_short_name for display (e.g., "1", "28", "E26"), not vehicle label/ID
+            const routeNumber = routeInfo?.route_short_name || '?';
+            
+            // Skip vehicles without valid route number
+            if (!routeNumber || routeNumber === '?' || routeNumber === 'N/A') {
+              return;
+            }
+            
+            currentVehicleIds.add(vehicleId);
+
+            const existingMarker = vehicleMarkersRef.current.get(vehicleId);
+
+            if (existingMarker) {
+              // Update existing marker position smoothly
+              existingMarker.setLatLng([vehicle.latitude, vehicle.longitude]);
+            } else {
+              // Create new marker
+              const vehicleColor = getRouteColor(vehicle.routeId?.toString(), vehicle.vehicle_type);
+              const isAccessible = vehicle.wheelchair_accessible === 'WHEELCHAIR_ACCESSIBLE';
+              
+              const vehicleIcon = L.divIcon({
+                className: 'custom-vehicle-marker',
+                html: `
+                  <div class="relative cursor-pointer group">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center shadow-lg border-2 border-white/30 transition-all duration-300 group-hover:scale-110 group-hover:shadow-xl" 
+                         style="background: linear-gradient(135deg, ${vehicleColor}dd, ${vehicleColor}ff);">
+                      <span class="text-white font-bold text-sm drop-shadow-lg">${routeNumber}</span>
+                    </div>
+                    ${isAccessible ? '<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center"><span class="text-white text-[10px]">♿</span></div>' : ''}
+                  </div>
+                `,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20],
+              });
+
+              const marker = L.marker([vehicle.latitude, vehicle.longitude], { 
+                icon: vehicleIcon,
+              });
+
+              marker.on('click', () => {
+                try {
+                  setSelectedVehicle({
+                    ...vehicle,
+                    routeNumber,
+                    routeInfo,
+                  });
+                  setIsVehicleDialogOpen(true);
+                } catch (error) {
+                  console.error('Error handling vehicle click:', error);
+                }
+              });
+
+              vehicleMarkersRef.current.set(vehicleId, marker);
+              
+              if (vehicleClusterGroup.current) {
+                vehicleClusterGroup.current.addLayer(marker);
+              }
+            }
+          } catch (error) {
+            console.error('Error processing vehicle:', vehicle.id, error);
+          }
+        });
+
+        // Remove markers that are no longer in data or out of range
+        vehicleMarkersRef.current.forEach((marker, id) => {
+          if (!currentVehicleIds.has(id)) {
+            if (vehicleClusterGroup.current) {
             vehicleClusterGroup.current.removeLayer(marker);
           }
           vehicleMarkersRef.current.delete(id);
@@ -694,8 +537,12 @@ const Map = forwardRef<MapRef, MapProps>(({
         
         // Find all trips for filtered routes and collect their stop IDs
         Object.entries(transitData.tripStopSequences).forEach(([tripId, sequence]: [string, any]) => {
-          const trip = transitData.trips?.find((t: any) => t.trip_id === tripId);
-          if (trip && activeFilters.includes(trip.route_id?.toString())) {
+          // Find which route this trip belongs to using routeToTripMap
+          const routeId = Object.keys(transitData.routeToTripMap || {}).find(
+            rId => transitData.routeToTripMap[rId] === tripId
+          );
+          
+          if (routeId && activeFilters.includes(routeId)) {
             sequence.forEach((stopSeq: any) => {
               routeStopIds.add(stopSeq.stopId);
             });
@@ -761,6 +608,16 @@ const Map = forwardRef<MapRef, MapProps>(({
           stopMarkersRef.current.delete(id);
         }
       });
+      } catch (error) {
+        console.error('❌ Error updating markers:', error);
+        // Clear all markers on error to prevent stuck state
+        vehicleMarkersRef.current.forEach((marker) => {
+          if (vehicleClusterGroup.current) {
+            vehicleClusterGroup.current.removeLayer(marker);
+          }
+        });
+        vehicleMarkersRef.current.clear();
+      }
     };
     
     if (immediate) {

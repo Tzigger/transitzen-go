@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useAuth } from "@/lib/convex";
 
 type PaymentMethodType = "card" | "apple-pay" | "google-pay" | "paypal" | "klarna";
 
@@ -25,6 +27,8 @@ const PaymentMethod = ({ ticketPrice, ticketType, ticketTypeName, onPaymentSucce
   const [cvv, setCvv] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
+  const { userId } = useAuth();
+  const createTicketMutation = useMutation(api.tickets.createTicket);
 
   const validateCard = (number: string): boolean => {
     // Luhn algorithm for card validation
@@ -104,6 +108,15 @@ const PaymentMethod = ({ ticketPrice, ticketType, ticketTypeName, onPaymentSucce
       }
     }
 
+    if (!userId) {
+      toast({
+        title: "Eroare",
+        description: "Nu ești autentificat",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -128,77 +141,27 @@ const PaymentMethod = ({ ticketPrice, ticketType, ticketTypeName, onPaymentSucce
       
       const expiresAt = new Date(Date.now() + expiryMilliseconds);
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          title: "Eroare",
-          description: "Nu ești autentificat",
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-        return;
-      }
-
-      // Get user profile for email
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("email, first_name")
-        .eq("id", user.id)
-        .single();
-
-      // Save ticket to database
-      const { error: ticketError } = await supabase
-        .from("tickets")
-        .insert([{
-          user_id: user.id,
-          ticket_id: ticketId,
-          ticket_type: ticketType,
+      // Save ticket to database using Convex
+      await createTicketMutation({
+        userId,
+        ticketId,
+        ticketType,
+        price: ticketPrice,
+        paymentMethod,
+        expiresAt: expiresAt.toISOString(),
+        qrData: {
+          ticketId,
           price: ticketPrice,
-          payment_status: "completed",
-          payment_method: paymentMethod,
-          expires_at: expiresAt.toISOString(),
-          qr_data: {
-            ticketId,
-            price: ticketPrice,
-            expiryTime: expiresAt.toISOString(),
-          },
-        }]);
+          expiryTime: expiresAt.toISOString(),
+        },
+      });
 
-      if (ticketError) {
-        console.error("Error saving ticket:", ticketError);
-        toast({
-          title: "Eroare",
-          description: "Nu s-a putut salva biletul",
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-        return;
-      }
-
-      // Send confirmation email
-      if (profile?.email) {
-        try {
-          await supabase.functions.invoke("send-ticket-confirmation", {
-            body: {
-              email: profile.email,
-              firstName: profile.first_name || "Utilizator",
-              ticketId,
-              ticketType: ticketTypeName,
-              price: ticketPrice,
-              expiresAt: expiresAt.toISOString(),
-            },
-          });
-        } catch (emailError) {
-          console.error("Error sending email:", emailError);
-          // Don't fail the payment if email fails
-        }
-      }
+      // Note: Email sending would require a Convex action
+      // For now, we'll skip the email confirmation
 
       toast({
         title: "Plată reușită! 🎉",
-        description: "Biletul tău a fost generat cu succes. Verifică-ți emailul pentru confirmare.",
+        description: "Biletul tău a fost generat cu succes.",
       });
 
       onPaymentSuccess(ticketId);

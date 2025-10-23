@@ -12,80 +12,50 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/convex";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 
 interface FavoriteRoute {
-  id: string;
-  user_id: string;
+  _id: string;
+  userId: string;
   name: string;
   origin: string;
-  origin_lat: number;
-  origin_lng: number;
+  originLat: number;
+  originLng: number;
   destination: string;
-  destination_lat: number;
-  destination_lng: number;
-  route_info: {
+  destinationLat: number;
+  destinationLng: number;
+  routeInfo?: {
     totalDuration?: number;
     totalDistance?: string;
     segments?: any[];
     averageCrowding?: number;
-  } | null;
-  created_at: string;
+  };
+  _creationTime: number;
 }
 
 const Journeys = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { userId } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
-  const [routes, setRoutes] = useState<FavoriteRoute[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Convex queries and mutations
+  const routes = useQuery(api.favoriteRoutes.getFavoriteRoutes, userId ? { userId } : "skip");
+  const deleteRouteMutation = useMutation(api.favoriteRoutes.deleteFavoriteRoute);
 
   useEffect(() => {
-    fetchFavoriteRoutes();
-  }, []);
-
-  const fetchFavoriteRoutes = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        navigate('/login');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('favorite_routes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setRoutes((data || []) as unknown as FavoriteRoute[]);
-    } catch (error) {
-      console.error('Error fetching favorite routes:', error);
-      toast({
-        title: "Eroare",
-        description: "Nu am putut încărca traseele tale favorite",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+    if (!userId) {
+      navigate('/login');
     }
-  };
+  }, [userId, navigate]);
 
   const handleDeleteRoute = async (routeId: string) => {
     try {
-      const { error } = await supabase
-        .from('favorite_routes')
-        .delete()
-        .eq('id', routeId);
-
-      if (error) throw error;
-
-      setRoutes(routes.filter(r => r.id !== routeId));
+      await deleteRouteMutation({ routeId: routeId as any });
 
       toast({
         title: "Succes",
@@ -106,14 +76,14 @@ const Journeys = () => {
     navigate('/create-journey', {
       state: {
         prefilledOrigin: route.origin,
-        prefilledOriginCoords: { lat: route.origin_lat, lng: route.origin_lng },
+        prefilledOriginCoords: { lat: route.originLat, lng: route.originLng },
         prefilledDestination: route.destination,
-        prefilledDestinationCoords: { lat: route.destination_lat, lng: route.destination_lng },
+        prefilledDestinationCoords: { lat: route.destinationLat, lng: route.destinationLng },
       }
     });
   };
 
-  const filteredRoutes = routes.filter(route =>
+  const filteredRoutes = (routes || []).filter(route =>
     route.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
     route.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -126,7 +96,7 @@ const Journeys = () => {
         return a.name.localeCompare(b.name);
       case 'recent':
       default:
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return b._creationTime - a._creationTime;
     }
   });
 
@@ -165,7 +135,7 @@ const Journeys = () => {
               <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-2">
                 <MapPin className="w-6 h-6 text-primary" />
               </div>
-              <p className="text-2xl font-bold text-foreground">{routes.length}</p>
+              <p className="text-2xl font-bold text-foreground">{(routes || []).length}</p>
               <p className="text-xs text-muted-foreground">Trasee salvate</p>
             </div>
             <div className="text-center">
@@ -173,7 +143,7 @@ const Journeys = () => {
                 <Calendar className="w-6 h-6 text-success" />
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {routes.filter(r => r.route_info).length}
+                {(routes || []).filter(r => r.routeInfo).length}
               </p>
               <p className="text-xs text-muted-foreground">Cu rute calculate</p>
             </div>
@@ -209,7 +179,7 @@ const Journeys = () => {
 
         {/* Routes List */}
         <div className="space-y-3 pb-4">
-          {isLoading ? (
+          {!routes ? (
             <div className="glass-card p-8 rounded-[2rem] text-center">
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
                 <MapPin className="w-8 h-8 text-primary" />
@@ -219,8 +189,8 @@ const Journeys = () => {
           ) : sortedRoutes.length > 0 ? (
             sortedRoutes.map((route) => (
               <JourneyCard 
-                key={route.id} 
-                route={route}
+                key={route._id} 
+                route={route as any}
                 onPlanJourney={handlePlanJourney}
                 onDelete={handleDeleteRoute}
               />

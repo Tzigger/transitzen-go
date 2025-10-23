@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useAuth } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,24 +29,15 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { userId, setSession } = useAuth();
+  const signUp = useMutation(api.auth.signUp);
 
   useEffect(() => {
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (userId) {
+      navigate("/dashboard");
+    }
+  }, [userId, navigate]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,54 +82,37 @@ const Signup = () => {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: {
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-        }
-      },
-    });
-
-    setLoading(false);
-
-    if (error) {
-      toast({
-        title: "Eroare la înregistrare",
-        description: error.message === "User already registered" 
-          ? "Acest email este deja înregistrat" 
-          : error.message,
-        variant: "destructive",
+    try {
+      const result = await signUp({
+        email,
+        password,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
       });
-    } else {
+      setSession(result.userId, result.email);
       toast({
         title: "Cont creat cu succes!",
         description: "Bun venit la ZeroWait!",
       });
+      navigate("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Eroare la înregistrare",
+        description: error.message === "User already exists" 
+          ? "Acest email este deja înregistrat" 
+          : error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleGoogleSignup = async () => {
-    setLoading(true);
-    
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
+    toast({
+      title: "Feature coming soon",
+      description: "Google OAuth will be available soon.",
     });
-
-    if (error) {
-      setLoading(false);
-      toast({
-        title: "Eroare la înregistrare",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
   };
 
   return (

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useAuth } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,24 +16,15 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { userId, setSession } = useAuth();
+  const signIn = useMutation(api.auth.signIn);
 
   useEffect(() => {
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/dashboard");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (userId) {
+      navigate("/dashboard");
+    }
+  }, [userId, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,47 +40,32 @@ const Login = () => {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      toast({
-        title: "Eroare la autentificare",
-        description: error.message === "Invalid login credentials" 
-          ? "Email sau parolă greșită" 
-          : error.message,
-        variant: "destructive",
-      });
-    } else {
+    try {
+      const result = await signIn({ email, password });
+      setSession(result.userId, result.email);
       toast({
         title: "Autentificare reușită",
         description: "Bun venit înapoi!",
       });
+      navigate("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Eroare la autentificare",
+        description: error.message === "Invalid credentials" 
+          ? "Email sau parolă greșită" 
+          : error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
-    
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
+    toast({
+      title: "Feature coming soon",
+      description: "Google OAuth will be available soon.",
     });
-
-    if (error) {
-      setLoading(false);
-      toast({
-        title: "Eroare la autentificare",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
   };
 
   return (

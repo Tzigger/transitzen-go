@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { Capacitor } from "@capacitor/core";
 import { lazy, Suspense } from "react";
 import MobileOnly from "./components/MobileOnly";
+import { ConvexClientProvider } from "./lib/convex";
 
 // Lazy load all pages for better performance
 const Welcome = lazy(() => import("./pages/Welcome"));
@@ -36,12 +37,13 @@ const PageLoader = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <Router>
+  <ConvexClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <Router>
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<MobileOnly><Welcome /></MobileOnly>} />
@@ -57,10 +59,11 @@ const App = () => (
               <Route path="*" element={<MobileOnly><NotFound /></MobileOnly>} />
             </Routes>
           </Suspense>
-        </Router>
-      </TooltipProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
+          </Router>
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  </ConvexClientProvider>
 );
 
 export default App;

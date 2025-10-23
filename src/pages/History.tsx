@@ -4,79 +4,31 @@ import { ArrowLeft, Clock, MapPin, Calendar, Bus, Navigation, Trash2, Play } fro
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/convex";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
-
-interface Journey {
-  id: string;
-  origin: string;
-  destination: string;
-  arrival_date: string;
-  arrival_time: string;
-  departure_time: string | null;
-  estimated_duration: number | null;
-  route_details: any;
-  is_active: boolean;
-  status: "scheduled" | "active" | "completed" | "cancelled";
-  started_at: string | null;
-  pre_departure_notified_at: string | null;
-  departure_notified_at: string | null;
-  created_at: string;
-}
+import { Id } from "../../convex/_generated/dataModel";
 
 const History = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [journeys, setJourneys] = useState<Journey[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { userId } = useAuth();
+
+  // Convex queries and mutations
+  const journeysData = useQuery(api.journeys.getJourneys, userId ? { userId } : "skip");
+  const journeys = journeysData || [];
+  const deleteJourneyMutation = useMutation(api.journeys.deleteJourney);
 
   useEffect(() => {
-    fetchJourneys();
-  }, []);
-
-  const fetchJourneys = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        navigate('/login');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('journeys')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching journeys:', error);
-        throw error;
-      }
-
-      setJourneys(data || []);
-    } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: "Eroare",
-        description: "Nu am putut încărca călătoriile",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+    if (!userId) {
+      navigate('/login');
     }
-  };
+  }, [userId, navigate]);
 
-  const deleteJourney = async (id: string) => {
+  const deleteJourney = async (id: Id<"journeys">) => {
     try {
-      const { error } = await supabase
-        .from('journeys')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setJourneys(journeys.filter(j => j.id !== id));
+      await deleteJourneyMutation({ journeyId: id });
       
       toast({
         title: "Șters",
@@ -112,7 +64,38 @@ const History = () => {
     return journeyDate > new Date();
   };
 
-  const getStatusBadge = (journey: Journey) => {
+  const handleStartJourney = async (journey: any) => {
+    const startedAt = new Date().toISOString();
+
+    try {
+      const updateJourneyStatus = useMutation(api.journeys.updateJourneyStatus);
+      await updateJourneyStatus({
+        journeyId: journey._id,
+        status: 'active',
+        isActive: false,
+      });
+    } catch (error) {
+      console.error('Error marking journey as active:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut porni călătoria automat",
+        variant: "destructive",
+      });
+    }
+
+    navigate('/active-journey', {
+      state: {
+        journey: {
+          ...journey,
+          status: 'active',
+          startedAt: startedAt,
+          isActive: false,
+        },
+      }
+    });
+  };
+
+  const getStatusBadge = (journey: any) => {
     switch (journey.status) {
       case "active":
         return {
@@ -137,51 +120,6 @@ const History = () => {
     }
   };
 
-  const handleStartJourney = async (journey: Journey) => {
-    const startedAt = new Date().toISOString();
-
-    try {
-      const { error } = await supabase
-        .from('journeys')
-        .update({
-          status: 'active',
-          started_at: startedAt,
-          is_active: false,
-        })
-        .eq('id', journey.id);
-
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      console.error('Error marking journey as active:', error);
-      toast({
-        title: "Eroare",
-        description: "Nu am putut porni călătoria automat",
-        variant: "destructive",
-      });
-    }
-
-    navigate('/active-journey', {
-      state: {
-        journey: {
-          ...journey,
-          status: 'active',
-          started_at: startedAt,
-          is_active: false,
-        },
-      }
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
@@ -203,7 +141,7 @@ const History = () => {
 
       <div className="px-4 space-y-4 max-w-md mx-auto">
         {/* Stats */}
-        {journeys.length > 0 && (
+        {journeys && journeys.length > 0 && (
           <div className="glass-card p-5 rounded-[2rem] shadow-xl">
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
@@ -218,7 +156,7 @@ const History = () => {
                   <Clock className="w-6 h-6 text-success" />
                 </div>
                 <p className="text-2xl font-bold text-foreground">
-                  {journeys.filter(j => isUpcoming(j.arrival_date, j.arrival_time)).length}
+                  {journeys.filter(j => isUpcoming(j.arrivalDate, j.arrivalTime)).length}
                 </p>
                 <p className="text-xs text-muted-foreground">Active</p>
               </div>
@@ -227,7 +165,7 @@ const History = () => {
                   <Bus className="w-6 h-6 text-warning" />
                 </div>
                 <p className="text-2xl font-bold text-foreground">
-                  {journeys.reduce((acc, j) => acc + (j.estimated_duration || 0), 0)}
+                  {journeys.reduce((acc, j) => acc + (j.estimatedDuration || 0), 0)}
                 </p>
                 <p className="text-xs text-muted-foreground">Min planificate</p>
               </div>
@@ -255,12 +193,12 @@ const History = () => {
         ) : (
           <div className="space-y-3 pb-4">
             {journeys.map((journey) => {
-              const upcoming = isUpcoming(journey.arrival_date, journey.arrival_time);
+              const upcoming = isUpcoming(journey.arrivalDate, journey.arrivalTime);
               const statusBadge = getStatusBadge(journey);
               
               return (
                 <div 
-                  key={journey.id}
+                  key={journey._id}
                   className="glass-card p-5 rounded-[2rem] hover-lift relative overflow-hidden group shadow-xl"
                 >
                   {/* Background gradient accent */}
@@ -290,7 +228,7 @@ const History = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteJourney(journey.id)}
+                        onClick={() => deleteJourney(journey._id)}
                         className="text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -305,18 +243,18 @@ const History = () => {
                           <p className="text-xs text-muted-foreground">Data</p>
                         </div>
                         <p className="text-sm font-semibold text-foreground">
-                          {formatDate(journey.arrival_date)}
+                          {formatDate(journey.arrivalDate)}
                         </p>
                       </div>
                       
-                      {journey.departure_time && (
+                      {journey.departureTime && (
                         <div className="glass p-3 rounded-xl border border-white/10">
                           <div className="flex items-center gap-2 mb-1">
                             <Clock className="w-3 h-3 text-muted-foreground" />
                             <p className="text-xs text-muted-foreground">Plecare</p>
                           </div>
                           <p className="text-sm font-semibold text-foreground">
-                            {journey.departure_time}
+                            {journey.departureTime}
                           </p>
                         </div>
                       )}
@@ -327,19 +265,19 @@ const History = () => {
                           <p className="text-xs text-muted-foreground">Sosire</p>
                         </div>
                         <p className="text-sm font-semibold text-foreground">
-                          {journey.arrival_time}
+                          {journey.arrivalTime}
                         </p>
                       </div>
                     </div>
 
                     {/* Route Info */}
-                    {journey.route_details && journey.route_details.segments && (
+                    {journey.routeDetails && journey.routeDetails.segments && (
                       <div className="space-y-3">
                         <p className="text-xs text-muted-foreground mb-2">
-                          Ruta ({journey.estimated_duration} min • {journey.route_details.totalDistance})
+                          Ruta ({journey.estimatedDuration} min • {journey.routeDetails.totalDistance})
                         </p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {journey.route_details.segments
+                          {journey.routeDetails.segments
                             .filter(seg => seg.mode === 'TRANSIT' && seg.vehicle)
                             .map((segment, idx) => (
                               <div 

@@ -4,39 +4,35 @@ import { Plus, Bell, Settings, Map, Clock, TrendingUp, Users, Zap, Leaf, Wallet,
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/convex";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import TicketSelector from "@/components/TicketSelector";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { userId, email } = useAuth();
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? "Bună dimineața" : currentHour < 18 ? "Bună ziua" : "Bună seara";
   const [userName, setUserName] = useState<string>("");
 
+  // Convex queries
+  const profile = useQuery(api.profiles.getProfile, userId ? { userId } : "skip");
+
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate("/login");
-        return;
-      }
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+  }, [userId, navigate]);
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (profile && profile.first_name) {
-        setUserName(profile.first_name);
-      } else {
-        setUserName(session.user.email?.split('@')[0] || 'Utilizator');
-      }
-    };
-
-    fetchUserProfile();
-  }, [navigate]);
+  useEffect(() => {
+    if (profile && profile.firstName) {
+      setUserName(profile.firstName);
+    } else if (email) {
+      setUserName(email.split('@')[0] || 'Utilizator');
+    }
+  }, [profile, email]);
 
   const tips = [
     { icon: Zap, title: "Pleacă cu 5 min mai devreme", desc: "Evită stresul de a prinde autobuzul" },

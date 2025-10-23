@@ -13,7 +13,8 @@ import {
   DrawerDescription,
 } from "@/components/ui/drawer";
 import Map, { MapRef } from "@/components/Map";
-import { supabase } from "@/integrations/supabase/client";
+import { useAction, useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 const vehicleTypes = [
   { id: 'bus', label: 'Autobuze', icon: Bus, emoji: '🚍' },
@@ -39,6 +40,11 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 const MapView = () => {
   const navigate = useNavigate();
   const mapRef = useRef<MapRef>(null);
+  const searchPlacesAction = useAction(api.actions.searchPlaces);
+  
+  // Use query to get transit data from database (updated by cron job)
+  const transitData = useQuery(api.transit.getTransitData);
+  
   const [selectedVehicles, setSelectedVehicles] = useState<string[]>(['bus', 'tram']);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,7 +53,6 @@ const MapView = () => {
   const [routeInfo, setRouteInfo] = useState<{ duration: string; distance: string } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [transitData, setTransitData] = useState<any>(null);
   const [nearbyVehicles, setNearbyVehicles] = useState<any[]>([]);
 
   const toggleVehicleType = (id: string) => {
@@ -69,17 +74,10 @@ const MapView = () => {
     setShowResults(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('search-places', {
-        body: {
-          query,
-          location: USER_LOCATION,
-        },
+      const data = await searchPlacesAction({
+        query,
+        location: USER_LOCATION,
       });
-
-      if (error) {
-        console.error('Error from search-places:', error);
-        throw error;
-      }
 
       setSearchResults(data.results || []);
     } catch (error) {
@@ -101,29 +99,7 @@ const MapView = () => {
     setRouteInfo({ duration, distance });
   };
 
-  // Fetch transit data
-  useEffect(() => {
-    const fetchTransitData = async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('get-transit-data');
-
-        if (error) {
-          console.error('Error fetching transit data:', error);
-          return;
-        }
-
-        setTransitData(data);
-      } catch (error) {
-        console.error('Error fetching transit data:', error);
-      }
-    };
-
-    fetchTransitData();
-    const interval = setInterval(fetchTransitData, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Process nearby vehicles from transit data
+  // Process nearby vehicles from transit data (reactive to database changes)
   useEffect(() => {
     if (!transitData?.vehicles) return;
 

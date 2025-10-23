@@ -6,10 +6,12 @@ import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, MapPin, Clock, Bell, Save, Navigation, Loader2 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import RouteDisplay from "@/components/RouteDisplay";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useMutation, useAction } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useAuth } from "@/lib/convex";
 
 const USER_LOCATION = { lat: 47.1585, lng: 27.6014 };
 
@@ -18,6 +20,13 @@ const CreateJourney = () => {
   const location = useLocation();
   const { toast } = useToast();
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const { userId } = useAuth();
+  
+  // Convex mutations and actions
+  const createJourneyMutation = useMutation(api.journeys.createJourney);
+  const createFavoriteRouteMutation = useMutation(api.favoriteRoutes.createFavoriteRoute);
+  const searchPlacesAction = useAction(api.actions.searchPlaces);
+  const planRouteAction = useAction(api.actions.planRoute);
   
   // Get prefilled data from navigation state
   const prefilledData = location.state as {
@@ -190,17 +199,10 @@ const CreateJourney = () => {
     setShowOriginResults(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('search-places', {
-        body: {
-          query,
-          location: USER_LOCATION,
-        },
+      const data = await searchPlacesAction({
+        query,
+        location: USER_LOCATION,
       });
-
-      if (error) {
-        console.error('Error from search-places:', error);
-        throw error;
-      }
 
       setOriginSearchResults(data.results || []);
     } catch (error) {
@@ -235,17 +237,10 @@ const CreateJourney = () => {
     setShowResults(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('search-places', {
-        body: {
-          query,
-          location: USER_LOCATION,
-        },
+      const data = await searchPlacesAction({
+        query,
+        location: USER_LOCATION,
       });
-
-      if (error) {
-        console.error('Error from search-places:', error);
-        throw error;
-      }
 
       setSearchResults(data.results || []);
     } catch (error) {
@@ -283,18 +278,11 @@ const CreateJourney = () => {
       const arrivalDateTime = new Date(`${date}T${arrivalTime}`);
       const arrivalTimestamp = Math.floor(arrivalDateTime.getTime() / 1000);
 
-      const { data, error } = await supabase.functions.invoke('plan-route', {
-        body: {
-          origin: originCoords,
-          destination: targetCoords,
-          arrivalTime: arrivalTimestamp,
-        },
+      const data = await planRouteAction({
+        origin: originCoords,
+        destination: targetCoords,
+        arrivalTime: arrivalTimestamp,
       });
-
-      if (error) {
-        console.error('Error from plan-route:', error);
-        throw error;
-      }
 
       if (data.routes && data.routes.length > 0) {
         setRoutes(data.routes);
@@ -382,51 +370,45 @@ const CreateJourney = () => {
       return;
     }
 
+    if (!userId) {
+      toast({
+        title: "Eroare",
+        description: "Trebuie să fii autentificat",
+        variant: "destructive",
+      });
+      navigate('/login');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          title: "Eroare",
-          description: "Trebuie să fii autentificat",
-          variant: "destructive",
-        });
-        navigate('/login');
-        return;
-      }
-
       // Calculate departure time from selected route
       const departureParts = selectedRoute.departureTime.match(/(\d+):(\d+)/);
       const departureTime = departureParts ? `${departureParts[1]}:${departureParts[2]}` : null;
 
-      const { error } = await supabase.from('journeys').insert({
-        user_id: user.id,
+      await createJourneyMutation({
+        userId,
         origin: useCurrentLocation ? "Locația curentă" : origin,
-        origin_lat: originCoords.lat,
-        origin_lng: originCoords.lng,
+        originLat: originCoords.lat,
+        originLng: originCoords.lng,
         destination: destination.trim(),
-        destination_lat: destinationCoords?.lat,
-        destination_lng: destinationCoords?.lng,
-        arrival_date: date,
-        arrival_time: arrivalTime,
-        departure_time: departureTime,
-        estimated_duration: selectedRoute.totalDuration,
-        route_details: {
+        destinationLat: destinationCoords?.lat,
+        destinationLng: destinationCoords?.lng,
+        arrivalDate: date,
+        arrivalTime: arrivalTime,
+        departureTime: departureTime || undefined,
+        estimatedDuration: selectedRoute.totalDuration,
+        routeDetails: {
           segments: selectedRoute.segments,
           totalDistance: selectedRoute.totalDistance,
         },
-        recurring_days: recurringDays,
-        notify_departure: notifyDeparture,
-        notify_delays: notifyDelays,
-        notify_crowding: notifyCrowding,
-        notify_route_changes: notifyRouteChanges,
-        is_active: true,
-        status: "scheduled",
+        recurringDays: recurringDays.length > 0 ? recurringDays : undefined,
+        notifyDeparture,
+        notifyDelays,
+        notifyCrowding,
+        notifyRouteChanges,
       });
-
-      if (error) throw error;
 
       toast({
         title: "Success! 🎉",
@@ -465,36 +447,41 @@ const CreateJourney = () => {
       return;
     }
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          title: "Eroare",
-          description: "Trebuie să fii autentificat",
-          variant: "destructive",
-        });
-        navigate('/login');
-        return;
-      }
+    if (!userId) {
+      toast({
+        title: "Eroare",
+        description: "Trebuie să fii autentificat",
+        variant: "destructive",
+      });
+      navigate('/login');
+      return;
+    }
 
-      const { error } = await supabase.from('favorite_routes').insert({
-        user_id: user.id,
+    if (!destinationCoords) {
+      toast({
+        title: "Eroare",
+        description: "Nu există coordonate pentru destinație",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await createFavoriteRouteMutation({
+        userId,
         name: favoriteName.trim(),
         origin: useCurrentLocation ? "Locația curentă" : origin,
-        origin_lat: originCoords.lat,
-        origin_lng: originCoords.lng,
+        originLat: originCoords.lat,
+        originLng: originCoords.lng,
         destination: destination.trim(),
-        destination_lat: destinationCoords?.lat,
-        destination_lng: destinationCoords?.lng,
-        route_info: {
+        destinationLat: destinationCoords.lat,
+        destinationLng: destinationCoords.lng,
+        routeInfo: {
           totalDuration: selectedRoute.totalDuration,
           totalDistance: selectedRoute.totalDistance,
           segments: selectedRoute.segments,
         },
       });
-
-      if (error) throw error;
 
       toast({
         title: "Success! ⭐",
