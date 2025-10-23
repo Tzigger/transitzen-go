@@ -17,6 +17,10 @@ interface Journey {
   estimated_duration: number | null;
   route_details: any;
   is_active: boolean;
+  status: "scheduled" | "active" | "completed" | "cancelled";
+  started_at: string | null;
+  pre_departure_notified_at: string | null;
+  departure_notified_at: string | null;
   created_at: string;
 }
 
@@ -108,10 +112,64 @@ const History = () => {
     return journeyDate > new Date();
   };
 
-  const handleStartJourney = (journey: Journey) => {
+  const getStatusBadge = (journey: Journey) => {
+    switch (journey.status) {
+      case "active":
+        return {
+          label: "În desfășurare",
+          className: "bg-success/20 text-success border-success/30",
+        };
+      case "completed":
+        return {
+          label: "Finalizată",
+          className: "bg-muted/20 text-muted-foreground border-muted/30",
+        };
+      case "cancelled":
+        return {
+          label: "Anulată",
+          className: "bg-destructive/10 text-destructive border-destructive/30",
+        };
+      default:
+        return {
+          label: "Planificată",
+          className: "bg-primary/20 text-primary border-primary/30",
+        };
+    }
+  };
+
+  const handleStartJourney = async (journey: Journey) => {
+    const startedAt = new Date().toISOString();
+
+    try {
+      const { error } = await supabase
+        .from('journeys')
+        .update({
+          status: 'active',
+          started_at: startedAt,
+          is_active: false,
+        })
+        .eq('id', journey.id);
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error marking journey as active:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut porni călătoria automat",
+        variant: "destructive",
+      });
+    }
+
     navigate('/active-journey', {
       state: {
-        journey: journey,
+        journey: {
+          ...journey,
+          status: 'active',
+          started_at: startedAt,
+          is_active: false,
+        },
       }
     });
   };
@@ -198,6 +256,7 @@ const History = () => {
           <div className="space-y-3 pb-4">
             {journeys.map((journey) => {
               const upcoming = isUpcoming(journey.arrival_date, journey.arrival_time);
+              const statusBadge = getStatusBadge(journey);
               
               return (
                 <div 
@@ -223,13 +282,9 @@ const History = () => {
                         </div>
                         <Badge 
                           variant="outline" 
-                          className={`text-xs ${
-                            upcoming 
-                              ? 'bg-primary/20 text-primary border-primary/30' 
-                              : 'bg-success/20 text-success border-success/30'
-                          }`}
+                          className={`text-xs ${statusBadge.className}`}
                         >
-                          ● {upcoming ? 'Planificată' : 'Trecută'}
+                          ● {statusBadge.label}
                         </Badge>
                       </div>
                       <Button
@@ -305,7 +360,7 @@ const History = () => {
                         </div>
 
                         {/* Start Journey Button - Only for upcoming journeys */}
-                        {upcoming && (
+                        {journey.status === 'scheduled' && upcoming && (
                           <Button 
                             onClick={() => handleStartJourney(journey)}
                             className="w-full gradient-primary h-12 text-sm font-semibold rounded-full shadow-lg hover:shadow-xl transition-all group"

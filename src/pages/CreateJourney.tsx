@@ -423,6 +423,7 @@ const CreateJourney = () => {
         notify_crowding: notifyCrowding,
         notify_route_changes: notifyRouteChanges,
         is_active: true,
+        status: "scheduled",
       });
 
       if (error) throw error;

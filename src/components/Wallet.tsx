@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Ticket, Clock, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +26,7 @@ const Wallet = () => {
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<TicketData | null>(null);
   const [qrKey, setQrKey] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState(30);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -33,14 +34,36 @@ const Wallet = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedTicket) {
-      const qrTimer = setInterval(() => {
-        setQrKey((prev) => prev + 1);
-      }, 10000);
+    if (!selectedTicket) return;
 
-      return () => clearInterval(qrTimer);
-    }
+    setQrKey(0);
+    setTimeRemaining(30);
+
+    const timer = setInterval(() => {
+      setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, [selectedTicket]);
+
+  useEffect(() => {
+    if (!selectedTicket || timeRemaining > 0) return;
+
+    setQrKey((prev) => prev + 1);
+    setTimeRemaining(30);
+  }, [selectedTicket, timeRemaining]);
+
+  const formatTime = (seconds: number) => `${seconds}s`;
+
+  const currentQrValue = useMemo(() => {
+    if (!selectedTicket) return "";
+
+    return JSON.stringify({
+      ...selectedTicket.qr_data,
+      refreshedAt: Date.now(),
+      qrVersion: qrKey,
+    });
+  }, [selectedTicket, qrKey]);
 
   const fetchTickets = async () => {
     try {
@@ -203,14 +226,20 @@ const Wallet = () => {
                 </div>
               </div>
 
+              <div className="glass-card p-4 rounded-2xl flex items-center justify-center gap-4">
+                <Clock className="w-8 h-8 text-primary shrink-0" />
+                <div className="flex flex-col items-center">
+                  <div className="text-3xl font-bold text-foreground tabular-nums">
+                    {formatTime(timeRemaining)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">secunde până la reîmprospătare</div>
+                </div>
+              </div>
+
               <div className="bg-white p-6 rounded-2xl flex items-center justify-center">
                 <QRCodeSVG
                   key={qrKey}
-                  value={JSON.stringify({
-                    ...selectedTicket.qr_data,
-                    timestamp: Date.now(),
-                    qrVersion: qrKey,
-                  })}
+                  value={currentQrValue}
                   size={220}
                   level="H"
                   includeMargin

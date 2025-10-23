@@ -263,9 +263,9 @@ const Map = forwardRef<MapRef, MapProps>(({
       disableClusteringAtZoom: 18, // No clustering at max zoom
       iconCreateFunction: (cluster) => {
         const count = cluster.getChildCount();
-        
-        // Don't cluster if less than 4 vehicles - show individual markers
-        if (count < 4) {
+
+        // Don't cluster if less than 3 vehicles - show individual markers
+        if (count < 3) {
           return cluster.getAllChildMarkers()[0].options.icon as L.DivIcon;
         }
         

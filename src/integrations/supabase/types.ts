@@ -65,6 +65,7 @@ export type Database = {
           arrival_time: string
           created_at: string
           departure_time: string | null
+          departure_notified_at: string | null
           destination: string
           destination_lat: number | null
           destination_lng: number | null
@@ -80,6 +81,9 @@ export type Database = {
           origin_lng: number | null
           recurring_days: Json | null
           route_details: Json | null
+          pre_departure_notified_at: string | null
+          started_at: string | null
+          status: "scheduled" | "active" | "completed" | "cancelled"
           updated_at: string
           user_id: string
         }
@@ -88,6 +92,7 @@ export type Database = {
           arrival_time: string
           created_at?: string
           departure_time?: string | null
+          departure_notified_at?: string | null
           destination: string
           destination_lat?: number | null
           destination_lng?: number | null
@@ -103,6 +108,9 @@ export type Database = {
           origin_lng?: number | null
           recurring_days?: Json | null
           route_details?: Json | null
+          pre_departure_notified_at?: string | null
+          started_at?: string | null
+          status?: "scheduled" | "active" | "completed" | "cancelled"
           updated_at?: string
           user_id: string
         }
@@ -111,6 +119,7 @@ export type Database = {
           arrival_time?: string
           created_at?: string
           departure_time?: string | null
+          departure_notified_at?: string | null
           destination?: string
           destination_lat?: number | null
           destination_lng?: number | null
@@ -126,7 +135,46 @@ export type Database = {
           origin_lng?: number | null
           recurring_days?: Json | null
           route_details?: Json | null
+          pre_departure_notified_at?: string | null
+          started_at?: string | null
+          status?: "scheduled" | "active" | "completed" | "cancelled"
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      journey_notifications: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          journey_id: string
+          scheduled_at: string
+          sent_at: string | null
+          title: string
+          type: "pre_departure" | "departure"
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          journey_id: string
+          scheduled_at: string
+          sent_at?: string | null
+          title: string
+          type: "pre_departure" | "departure"
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          journey_id?: string
+          scheduled_at?: string
+          sent_at?: string | null
+          title?: string
+          type?: "pre_departure" | "departure"
           user_id?: string
         }
         Relationships: []
