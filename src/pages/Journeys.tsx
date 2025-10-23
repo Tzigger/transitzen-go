@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, ArrowLeft, Search, Filter, Calendar, MapPin } from "lucide-react";
 import JourneyCard from "@/components/JourneyCard";
@@ -12,108 +12,125 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Journey {
   id: string;
+  user_id: string;
+  origin: string;
   destination: string;
-  arrivalTime: string;
-  departureTime: string;
-  departureMinutes: number;
-  route: { type: 'bus' | 'tram'; number: string }[];
-  walkTime: number;
-  crowding: number;
-  status: 'on-time' | 'delayed' | 'early';
+  arrival_date: string;
+  arrival_time: string;
+  departure_time: string | null;
+  estimated_duration: number;
+  is_active: boolean;
+  route_details: {
+    segments: any[];
+    totalDistance: string;
+  };
+  notify_departure: boolean;
+  notify_delays: boolean;
+  notify_crowding: boolean;
+  notify_route_changes: boolean;
+  created_at: string;
 }
 
 const Journeys = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
-  
-  const [savedJourneys] = useState<Journey[]>([
-    {
-      id: '1',
-      destination: 'Facultatea de Automatică',
-      arrivalTime: '08:30',
-      departureTime: '08:05',
-      departureMinutes: 15,
-      route: [
-        { type: 'bus', number: '28' },
-        { type: 'tram', number: '3' }
-      ],
-      walkTime: 5,
-      crowding: 45,
-      status: 'on-time'
-    },
-    {
-      id: '2',
-      destination: 'Palas Mall',
-      arrivalTime: '14:00',
-      departureTime: '13:35',
-      departureMinutes: 45,
-      route: [
-        { type: 'bus', number: '41' }
-      ],
-      walkTime: 8,
-      crowding: 75,
-      status: 'delayed'
-    },
-    {
-      id: '3',
-      destination: 'Piața Unirii',
-      arrivalTime: '18:00',
-      departureTime: '17:40',
-      departureMinutes: 120,
-      route: [
-        { type: 'tram', number: '1' }
-      ],
-      walkTime: 3,
-      crowding: 30,
-      status: 'on-time'
-    },
-    {
-      id: '4',
-      destination: 'Gara CFR',
-      arrivalTime: '09:15',
-      departureTime: '08:50',
-      departureMinutes: 25,
-      route: [
-        { type: 'bus', number: '50' }
-      ],
-      walkTime: 4,
-      crowding: 55,
-      status: 'on-time'
-    },
-    {
-      id: '5',
-      destination: 'Spitalul Sf. Spiridon',
-      arrivalTime: '16:30',
-      departureTime: '16:00',
-      departureMinutes: 60,
-      route: [
-        { type: 'tram', number: '7' },
-        { type: 'bus', number: '26' }
-      ],
-      walkTime: 6,
-      crowding: 40,
-      status: 'on-time'
-    },
-    {
-      id: '6',
-      destination: 'Tudor Vladimirescu',
-      arrivalTime: '20:00',
-      departureTime: '19:30',
-      departureMinutes: 90,
-      route: [
-        { type: 'bus', number: '3' }
-      ],
-      walkTime: 7,
-      crowding: 65,
-      status: 'early'
-    }
-  ]);
+  const [journeys, setJourneys] = useState<Journey[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filteredJourneys = savedJourneys.filter(journey =>
+  useEffect(() => {
+    fetchJourneys();
+  }, []);
+
+  const fetchJourneys = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('journeys')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setJourneys((data || []) as unknown as Journey[]);
+    } catch (error) {
+      console.error('Error fetching journeys:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut încărca traseele tale",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleToggleActive = async (journeyId: string, isActive: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('journeys')
+        .update({ is_active: !isActive })
+        .eq('id', journeyId);
+
+      if (error) throw error;
+
+      setJourneys(journeys.map(j => 
+        j.id === journeyId ? { ...j, is_active: !isActive } : j
+      ));
+
+      toast({
+        title: "Succes",
+        description: `Traseu ${!isActive ? 'activat' : 'dezactivat'}`,
+      });
+    } catch (error) {
+      console.error('Error toggling journey:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut actualiza traseul",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteJourney = async (journeyId: string) => {
+    try {
+      const { error } = await supabase
+        .from('journeys')
+        .delete()
+        .eq('id', journeyId);
+
+      if (error) throw error;
+
+      setJourneys(journeys.filter(j => j.id !== journeyId));
+
+      toast({
+        title: "Succes",
+        description: "Traseu șters cu succes",
+      });
+    } catch (error) {
+      console.error('Error deleting journey:', error);
+      toast({
+        title: "Eroare",
+        description: "Nu am putut șterge traseul",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredJourneys = journeys.filter(journey =>
     journey.destination.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -122,10 +139,10 @@ const Journeys = () => {
       case 'destination':
         return a.destination.localeCompare(b.destination);
       case 'time':
-        return a.arrivalTime.localeCompare(b.arrivalTime);
+        return (a.arrival_time || '').localeCompare(b.arrival_time || '');
       case 'recent':
       default:
-        return 0;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
   });
 
@@ -164,7 +181,7 @@ const Journeys = () => {
               <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-2">
                 <MapPin className="w-6 h-6 text-primary" />
               </div>
-              <p className="text-2xl font-bold text-foreground">{savedJourneys.length}</p>
+              <p className="text-2xl font-bold text-foreground">{journeys.length}</p>
               <p className="text-xs text-muted-foreground">Trasee</p>
             </div>
             <div className="text-center">
@@ -172,18 +189,18 @@ const Journeys = () => {
                 <Calendar className="w-6 h-6 text-success" />
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {savedJourneys.filter(j => j.status === 'on-time').length}
+                {journeys.filter(j => j.is_active).length}
               </p>
-              <p className="text-xs text-muted-foreground">La timp</p>
+              <p className="text-xs text-muted-foreground">Active</p>
             </div>
             <div className="text-center">
               <div className="w-12 h-12 rounded-2xl bg-warning/20 flex items-center justify-center mx-auto mb-2">
                 <Filter className="w-6 h-6 text-warning" />
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {savedJourneys.filter(j => j.status === 'delayed').length}
+                {journeys.filter(j => !j.is_active).length}
               </p>
-              <p className="text-xs text-muted-foreground">Întârzieri</p>
+              <p className="text-xs text-muted-foreground">Inactive</p>
             </div>
           </div>
         </div>
@@ -217,9 +234,21 @@ const Journeys = () => {
 
         {/* Journeys List */}
         <div className="space-y-3 pb-4">
-          {sortedJourneys.length > 0 ? (
+          {isLoading ? (
+            <div className="glass-card p-8 rounded-[2rem] text-center">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <MapPin className="w-8 h-8 text-primary" />
+              </div>
+              <p className="text-sm text-muted-foreground">Se încarcă traseele...</p>
+            </div>
+          ) : sortedJourneys.length > 0 ? (
             sortedJourneys.map((journey) => (
-              <JourneyCard key={journey.id} journey={journey} />
+              <JourneyCard 
+                key={journey.id} 
+                journey={journey}
+                onToggleActive={handleToggleActive}
+                onDelete={handleDeleteJourney}
+              />
             ))
           ) : (
             <div className="glass-card p-8 rounded-[2rem] text-center">
