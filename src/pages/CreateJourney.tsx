@@ -463,6 +463,7 @@ const CreateJourney = () => {
                     calculateRoute();
                   }
                 }}
+                step="60"
                 lang="ro-RO"
                 className="h-16 glass border-white/20 text-foreground text-3xl font-bold rounded-2xl [&::-webkit-calendar-picker-indicator]:invert-[0.8]"
               />
