@@ -5,6 +5,7 @@ import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import TicketSelector from "@/components/TicketSelector";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -58,6 +59,9 @@ const Dashboard = () => {
           <h2 className="text-3xl font-bold text-foreground mb-2">{greeting}, {userName}! 👋</h2>
           <p className="text-muted-foreground">Hai să planificăm următoarea ta călătorie</p>
         </div>
+
+        {/* Ticket Selector */}
+        <TicketSelector />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-3">
