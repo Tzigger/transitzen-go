@@ -170,7 +170,7 @@ export const StopArrivalsDrawer = ({
           </DrawerDescription>
         </DrawerHeader>
         
-        <div className="px-6 pb-8 space-y-3 overflow-y-auto">
+        <div className="px-6 pt-6 pb-8 space-y-3 overflow-y-auto">
           {arrivals.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
