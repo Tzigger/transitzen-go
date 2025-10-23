@@ -89,6 +89,51 @@ export type Database = {
         }
         Relationships: []
       }
+      tickets: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          issued_at: string
+          payment_method: string
+          payment_status: Database["public"]["Enums"]["payment_status"]
+          price: number
+          qr_data: Json
+          ticket_id: string
+          ticket_type: Database["public"]["Enums"]["ticket_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          issued_at?: string
+          payment_method: string
+          payment_status?: Database["public"]["Enums"]["payment_status"]
+          price: number
+          qr_data: Json
+          ticket_id: string
+          ticket_type: Database["public"]["Enums"]["ticket_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          payment_method?: string
+          payment_status?: Database["public"]["Enums"]["payment_status"]
+          price?: number
+          qr_data?: Json
+          ticket_id?: string
+          ticket_type?: Database["public"]["Enums"]["ticket_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_preferences: {
         Row: {
           created_at: string
@@ -130,7 +175,8 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      payment_status: "pending" | "completed" | "failed" | "refunded"
+      ticket_type: "simple" | "day" | "month"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -257,6 +303,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      payment_status: ["pending", "completed", "failed", "refunded"],
+      ticket_type: ["simple", "day", "month"],
+    },
   },
 } as const
