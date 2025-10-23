@@ -71,6 +71,7 @@ const Map = forwardRef<MapRef, MapProps>(({
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const selectedRouteLayer = useRef<L.Polyline | null>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [filteredRoutes, setFilteredRoutes] = useState<string[]>([]); // Multiple route IDs
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
@@ -333,9 +334,21 @@ const Map = forwardRef<MapRef, MapProps>(({
       updateMapBounds();
 
       // Filter vehicles: by route if selected, by viewport always
-      const filteredVehicles = selectedRoute 
-        ? transitData.vehicles?.filter((v: any) => v.routeId === selectedRoute.route_id)
-        : transitData.vehicles;
+      const activeRouteFilter = selectedRoute ? selectedRoute.route_id : null;
+      const hasManualFilters = filteredRoutes.length > 0;
+      
+      const filteredVehicles = transitData.vehicles?.filter((v: any) => {
+        // If a route is selected from stop drawer, show only that route
+        if (activeRouteFilter) {
+          return v.routeId === activeRouteFilter;
+        }
+        // If manual filters are active, show only filtered routes
+        if (hasManualFilters) {
+          return filteredRoutes.includes(v.routeId?.toString());
+        }
+        // Otherwise show all
+        return true;
+      });
 
       filteredVehicles?.forEach((vehicle: any) => {
         // Validate coordinates
@@ -574,21 +587,25 @@ const Map = forwardRef<MapRef, MapProps>(({
           return isInViewport(stop.latitude, stop.longitude);
         }) || [];
 
-      // If a route is selected, only show stops for that route
-      if (selectedRoute && transitData.tripStopSequences) {
+      // If a route is selected from stop drawer or manual filters, only show stops for those routes
+      const activeFilters = selectedRoute 
+        ? [selectedRoute.route_id] 
+        : (filteredRoutes.length > 0 ? filteredRoutes : null);
+        
+      if (activeFilters && transitData.tripStopSequences) {
         const routeStopIds = new Set<number>();
         
-        // Find all trips for this route and collect their stop IDs
+        // Find all trips for filtered routes and collect their stop IDs
         Object.entries(transitData.tripStopSequences).forEach(([tripId, sequence]: [string, any]) => {
           const trip = transitData.trips?.find((t: any) => t.trip_id === tripId);
-          if (trip && trip.route_id === selectedRoute.route_id) {
+          if (trip && activeFilters.includes(trip.route_id?.toString())) {
             sequence.forEach((stopSeq: any) => {
               routeStopIds.add(stopSeq.stopId);
             });
           }
         });
         
-        // Filter to only stops that are part of this route
+        // Filter to only stops that are part of filtered routes
         nearbyStops = nearbyStops.filter((stop: any) => routeStopIds.has(stop.id));
       }
       
@@ -640,7 +657,7 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
       });
     });
-  }, [transitData, center, selectedRoute]);
+  }, [transitData, selectedRoute, isInViewport, updateMapBounds, filteredRoutes]);
 
   // Update markers when transit data changes
   useEffect(() => {
@@ -741,29 +758,31 @@ const Map = forwardRef<MapRef, MapProps>(({
       `}</style>
       <div ref={mapContainer} className="absolute inset-0 z-0" />
 
-      {/* Filter Button */}
-      {selectedRoute && (
-        <button
-          onClick={() => setIsFilterDrawerOpen(true)}
-          className="absolute bottom-28 left-4 w-11 h-11 glass-card backdrop-blur-xl rounded-full flex items-center justify-center shadow-2xl z-[600] border border-white/10 group hover:bg-primary/20 transition-all hover:scale-110"
-          aria-label="Open filters"
+      {/* Filter Button - Always visible */}
+      <button
+        onClick={() => setIsFilterDrawerOpen(true)}
+        className="absolute bottom-28 left-4 w-11 h-11 glass-card backdrop-blur-xl rounded-full flex items-center justify-center shadow-2xl z-[600] border border-white/10 group hover:bg-primary/20 transition-all hover:scale-110"
+        aria-label="Open filters"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-5 h-5 text-primary group-hover:scale-110 transition-transform"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-5 h-5 text-primary group-hover:scale-110 transition-transform"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-            />
-          </svg>
-        </button>
-      )}
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+          />
+        </svg>
+        {/* Active filter indicator */}
+        {(selectedRoute || filteredRoutes.length > 0) && (
+          <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full animate-pulse" />
+        )}
+      </button>
 
       {/* Vehicle Details Drawer */}
       <Drawer open={isVehicleDialogOpen} onOpenChange={setIsVehicleDialogOpen}>
@@ -838,75 +857,133 @@ const Map = forwardRef<MapRef, MapProps>(({
 
       {/* Filter Drawer */}
       <Drawer open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
-        <DrawerContent className="glass-card backdrop-blur-xl border-0 max-h-[50vh] rounded-t-[2rem]" aria-describedby="filter-description">
+        <DrawerContent className="glass-card backdrop-blur-xl border-0 max-h-[80vh] rounded-t-[2rem]" aria-describedby="filter-description">
           <DrawerHeader className="text-center border-b border-white/10 pb-6">
             <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-6" />
             <DrawerTitle className="text-2xl font-bold">
-              Filtru Rută
+              Filtre Harta
             </DrawerTitle>
           </DrawerHeader>
-          <div id="filter-description" className="px-6 pb-8 space-y-4">
-            {selectedRoute ? (
-              <>
-                <div className="glass-strong rounded-3xl p-5 border-l-[5px] shadow-lg" style={{ 
-                  borderColor: '#8B5CF6',
-                  background: 'linear-gradient(135deg, #8B5CF605, transparent)'
-                }}>
-                  <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Rută Selectată</p>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-3xl font-bold text-primary">{selectedRoute.route_short_name}</p>
-                      <p className="text-sm text-muted-foreground mt-1">{selectedRoute.route_long_name}</p>
-                    </div>
-                    <div className="text-4xl">
-                      {selectedRoute.route_type === 0 ? '🚊' : '🚍'}
-                    </div>
+          <div id="filter-description" className="px-6 pb-8 space-y-4 max-h-[60vh] overflow-y-auto">
+            {/* Active Route from Stop Selection */}
+            {selectedRoute && (
+              <div className="glass-strong rounded-3xl p-5 border-l-[5px] shadow-lg mb-4" style={{ 
+                borderColor: '#8B5CF6',
+                background: 'linear-gradient(135deg, #8B5CF605, transparent)'
+              }}>
+                <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Rută din Stație</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-primary">{selectedRoute.route_short_name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{selectedRoute.route_long_name}</p>
                   </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setSelectedRoute(null);
-                    setIsFilterDrawerOpen(false);
-                    if (selectedRouteLayer.current && map.current) {
-                      map.current.removeLayer(selectedRouteLayer.current);
-                      selectedRouteLayer.current = null;
-                    }
-                    // Trigger marker update to re-render based on viewport
-                    setTimeout(() => {
-                      if (updateTimeoutRef.current) {
-                        clearTimeout(updateTimeoutRef.current);
-                        updateTimeoutRef.current = null;
+                  <button
+                    onClick={() => {
+                      setSelectedRoute(null);
+                      if (selectedRouteLayer.current && map.current) {
+                        map.current.removeLayer(selectedRouteLayer.current);
+                        selectedRouteLayer.current = null;
                       }
-                      updateMarkers();
-                    }, 100);
-                  }}
-                  className="w-full glass-strong rounded-3xl p-4 flex items-center justify-center gap-2 hover:bg-destructive/20 transition-all border border-white/10 group"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5 text-destructive group-hover:scale-110 transition-transform"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                      setTimeout(() => {
+                        if (updateTimeoutRef.current) {
+                          clearTimeout(updateTimeoutRef.current);
+                          updateTimeoutRef.current = null;
+                        }
+                        updateMarkers();
+                      }, 100);
+                    }}
+                    className="text-destructive hover:scale-110 transition-transform"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                  <span className="font-semibold text-destructive">Șterge Filtru</span>
-                </button>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
 
-                <p className="text-xs text-center text-muted-foreground">
-                  Se afișează doar vehiculele și stațiile pentru această rută
-                </p>
-              </>
-            ) : (
-              <p className="text-center text-muted-foreground py-8">
-                Nicio rută selectată
+            {/* Manual Route Filters */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-foreground">Filtrează Rute</p>
+                {filteredRoutes.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setFilteredRoutes([]);
+                      setTimeout(() => {
+                        if (updateTimeoutRef.current) {
+                          clearTimeout(updateTimeoutRef.current);
+                          updateTimeoutRef.current = null;
+                        }
+                        updateMarkers();
+                      }, 100);
+                    }}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Șterge Tot ({filteredRoutes.length})
+                  </button>
+                )}
+              </div>
+
+              {/* Route list */}
+              <div className="grid grid-cols-4 gap-2">
+                {transitData?.routes
+                  ?.filter((route: any) => route.route_short_name && route.route_short_name !== '?')
+                  ?.sort((a: any, b: any) => {
+                    const aNum = parseInt(a.route_short_name);
+                    const bNum = parseInt(b.route_short_name);
+                    if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+                    return a.route_short_name.localeCompare(b.route_short_name);
+                  })
+                  ?.slice(0, 100) // Limit to first 100 routes
+                  ?.map((route: any) => {
+                    const isSelected = filteredRoutes.includes(route.route_id?.toString());
+                    const routeColor = route.route_type === 0 ? '#8B5CF6' : '#3B82F6';
+                    
+                    return (
+                      <button
+                        key={route.route_id}
+                        onClick={() => {
+                          setFilteredRoutes(prev => {
+                            const routeIdStr = route.route_id?.toString();
+                            const newFilters = prev.includes(routeIdStr)
+                              ? prev.filter(id => id !== routeIdStr)
+                              : [...prev, routeIdStr];
+                            
+                            // Trigger update after state change
+                            setTimeout(() => {
+                              if (updateTimeoutRef.current) {
+                                clearTimeout(updateTimeoutRef.current);
+                                updateTimeoutRef.current = null;
+                              }
+                              updateMarkers();
+                            }, 100);
+                            
+                            return newFilters;
+                          });
+                        }}
+                        className={`aspect-square rounded-2xl flex flex-col items-center justify-center transition-all text-white font-bold text-sm ${
+                          isSelected 
+                            ? 'ring-2 ring-primary scale-105 shadow-lg' 
+                            : 'opacity-60 hover:opacity-100'
+                        }`}
+                        style={{
+                          background: isSelected 
+                            ? `linear-gradient(135deg, ${routeColor}dd, ${routeColor}ff)`
+                            : `linear-gradient(135deg, ${routeColor}66, ${routeColor}88)`
+                        }}
+                      >
+                        <span className="text-base">{route.route_type === 0 ? '🚊' : '🚍'}</span>
+                        <span className="text-xs mt-0.5">{route.route_short_name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {filteredRoutes.length === 0 && !selectedRoute && (
+              <p className="text-center text-muted-foreground text-sm py-4">
+                Selectează rutele pentru a filtra vehiculele
               </p>
             )}
           </div>
