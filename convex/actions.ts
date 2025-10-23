@@ -10,7 +10,7 @@ export const fetchTransitData = action({
   },
 });
 
-// Search for places using OpenStreetMap Nominatim API
+// Search for places using Google Maps Places API
 export const searchPlaces = action({
   args: {
     query: v.string(),
@@ -21,40 +21,89 @@ export const searchPlaces = action({
   },
   handler: async (ctx, args) => {
     try {
-      // Use Nominatim for place search
-      const url = `https://nominatim.openstreetmap.org/search?` +
-        `q=${encodeURIComponent(args.query)}` +
-        `&format=json` +
-        `&limit=10` +
-        `&addressdetails=1` +
-        `&bounded=1` +
-        `&viewbox=${args.location.lng - 0.5},${args.location.lat + 0.5},${args.location.lng + 0.5},${args.location.lat - 0.5}`;
-
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'TransitZen App'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to search places');
+      // Input validation
+      if (!args.query || typeof args.query !== 'string') {
+        return { results: [], error: 'Valid search query is required' };
       }
 
+      if (args.query.length > 500) {
+        return { results: [], error: 'Search query too long (max 500 characters)' };
+      }
+
+      const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+      
+      if (!GOOGLE_MAPS_API_KEY) {
+        console.error('Google Maps API key not configured');
+        // Fallback to Nominatim if no API key
+        const url = `https://nominatim.openstreetmap.org/search?` +
+          `q=${encodeURIComponent(args.query)}` +
+          `&format=json` +
+          `&limit=10` +
+          `&addressdetails=1` +
+          `&bounded=1` +
+          `&viewbox=${args.location.lng - 0.5},${args.location.lat + 0.5},${args.location.lng + 0.5},${args.location.lat - 0.5}`;
+
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'TransitZen App'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to search places');
+        }
+
+        const data = await response.json();
+
+        const results = data.map((place: any) => ({
+          name: place.name || place.display_name.split(',')[0],
+          address: place.display_name,
+          location: {
+            lat: parseFloat(place.lat),
+            lng: parseFloat(place.lon),
+          },
+        }));
+
+        return { results };
+      }
+
+      // Use Google Places API Text Search - restricted to Iasi, Romania
+      const placesUrl = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
+      placesUrl.searchParams.append('query', `${args.query} Iași Romania`);
+      placesUrl.searchParams.append('location', `${args.location.lat},${args.location.lng}`);
+      placesUrl.searchParams.append('radius', '20000'); // 20km radius around Iasi
+      placesUrl.searchParams.append('region', 'ro'); // Bias results to Romania
+      placesUrl.searchParams.append('key', GOOGLE_MAPS_API_KEY);
+
+      const response = await fetch(placesUrl.toString());
       const data = await response.json();
 
-      const results = data.map((place: any) => ({
-        name: place.name || place.display_name.split(',')[0],
-        address: place.display_name,
-        location: {
-          lat: parseFloat(place.lat),
-          lng: parseFloat(place.lon),
-        },
-      }));
+      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+        console.error('Google Places API error:', data);
+        return { results: [], error: `Failed to search places: ${data.status}` };
+      }
+
+      // Format results - filter to only include results from Iasi
+      const results = data.results
+        .filter((place: any) => {
+          const address = place.formatted_address?.toLowerCase() || '';
+          return address.includes('iași') || address.includes('iasi');
+        })
+        .map((place: any) => ({
+          name: place.name,
+          address: place.formatted_address,
+          location: {
+            lat: place.geometry.location.lat,
+            lng: place.geometry.location.lng,
+          },
+          types: place.types,
+          placeId: place.place_id,
+        }));
 
       return { results };
     } catch (error) {
       console.error('Error searching places:', error);
-      return { results: [] };
+      return { results: [], error: 'Internal server error' };
     }
   },
 });

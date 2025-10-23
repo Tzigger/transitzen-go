@@ -127,7 +127,9 @@ const Map = forwardRef<MapRef, MapProps>(({
   useImperativeHandle(ref, () => ({
     centerOnUser: () => {
       if (map.current) {
-        map.current.setView([center.lat, center.lng], 15, {
+        // Use real user location if available, otherwise fall back to center prop
+        const targetLocation = userLocation || center;
+        map.current.setView([targetLocation.lat, targetLocation.lng], 15, {
           animate: true,
           duration: 0.5,
         });
@@ -451,6 +453,125 @@ const Map = forwardRef<MapRef, MapProps>(({
     return bounds.contains([lat, lng]);
   }, []);
 
+  // Calculate the next stop for a vehicle based on its position and route direction
+  const calculateNextStop = useCallback((vehicle: any, transitData: any): string | null => {
+    if (!vehicle || !transitData) return null;
+
+    try {
+      // Get the trip ID for this route
+      const tripId = transitData.routeToTripMap?.[vehicle.routeId];
+      if (!tripId) {
+        console.log('⚠️ No trip found for route:', vehicle.routeId);
+        return null;
+      }
+
+      // Get the stop sequence for this trip
+      const stopSequence = transitData.tripStopSequences?.[tripId];
+      if (!stopSequence || stopSequence.length === 0) {
+        console.log('⚠️ No stop sequence found for trip:', tripId);
+        return null;
+      }
+
+      // Get all stops with their details and distances from vehicle
+      const vehicleLat = vehicle.latitude;
+      const vehicleLon = vehicle.longitude;
+
+      const stopsWithDistance = stopSequence.map((stopSeq: any) => {
+        const stop = transitData.stops?.find((s: any) => s.id === stopSeq.stopId);
+        if (!stop) return null;
+
+        const distance = calculateDistance(vehicleLat, vehicleLon, stop.latitude, stop.longitude);
+        
+        return {
+          ...stopSeq,
+          stop,
+          distance,
+        };
+      }).filter(Boolean);
+
+      // Sort by sequence (order of stops on the route)
+      stopsWithDistance.sort((a: any, b: any) => a.sequence - b.sequence);
+
+      if (stopsWithDistance.length === 0) {
+        console.log('⚠️ No stops found in sequence');
+        return null;
+      }
+
+      // Find the closest stop to the vehicle's current position
+      let closestStopIndex = 0;
+      let minDistance = Infinity;
+      
+      stopsWithDistance.forEach((stopData: any, index: number) => {
+        if (stopData.distance < minDistance) {
+          minDistance = stopData.distance;
+          closestStopIndex = index;
+        }
+      });
+
+      // If the closest stop is very close (< 100m), assume vehicle is at or has passed it
+      // Return the next stop in sequence
+      if (minDistance < 0.1) { // Less than 100 meters
+        const nextStopIndex = closestStopIndex + 1;
+        if (nextStopIndex < stopsWithDistance.length) {
+          const nextStop = stopsWithDistance[nextStopIndex];
+          console.log('✅ Vehicle at stop, next stop:', nextStop.stop.name);
+          return nextStop.stop.name;
+        } else {
+          // Vehicle at last stop, return first stop (circular route)
+          const firstStop = stopsWithDistance[0];
+          console.log('🔄 Vehicle at last stop, returning to:', firstStop.stop.name);
+          return firstStop.stop.name;
+        }
+      }
+
+      // Vehicle is between stops - find which stops it's between
+      // Look at stops ahead in the sequence from the closest stop
+      let candidateStops = [];
+      
+      // Check next 3 stops from closest
+      for (let i = closestStopIndex; i < Math.min(closestStopIndex + 3, stopsWithDistance.length); i++) {
+        candidateStops.push(stopsWithDistance[i]);
+      }
+
+      // If we're near the end, also consider wrapping to beginning
+      if (closestStopIndex >= stopsWithDistance.length - 2) {
+        candidateStops.push(stopsWithDistance[0]);
+        if (stopsWithDistance.length > 1) {
+          candidateStops.push(stopsWithDistance[1]);
+        }
+      }
+
+      // From candidates, find the closest one that's not too far behind
+      const validCandidates = candidateStops.filter((stopData: any) => {
+        // Accept stops within 2km
+        return stopData.distance < 2.0;
+      });
+
+      if (validCandidates.length === 0) {
+        // No valid candidates, return closest stop
+        const closestStop = stopsWithDistance[closestStopIndex];
+        console.log('⚠️ No valid candidates, showing closest:', closestStop.stop.name);
+        return closestStop.stop.name;
+      }
+
+      // Get the closest valid candidate
+      const nextStop = validCandidates.reduce((closest: any, current: any) => {
+        if (!closest) return current;
+        return current.distance < closest.distance ? current : closest;
+      }, null);
+
+      if (nextStop && nextStop.stop) {
+        console.log('🎯 Next stop:', nextStop.stop.name, `(${(nextStop.distance * 1000).toFixed(0)}m away, sequence: ${nextStop.sequence})`);
+        return nextStop.stop.name;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ Error calculating next stop:', error);
+      return null;
+    }
+  }, []);
+
   // Optimized marker update with viewport filtering
   const updateMarkers = useCallback((immediate: boolean = false) => {
     if (!map.current || !transitData) return;
@@ -599,10 +720,14 @@ const Map = forwardRef<MapRef, MapProps>(({
 
               marker.on('click', () => {
                 try {
+                  // Calculate the next stop based on vehicle position and route direction
+                  const nextStopName = calculateNextStop(vehicle, transitData);
+                  
                   setSelectedVehicle({
                     ...vehicle,
                     routeNumber,
                     routeInfo,
+                    next_stop_name: nextStopName || 'Necunoscut',
                   });
                   setIsVehicleDialogOpen(true);
                 } catch (error) {
@@ -747,7 +872,7 @@ const Map = forwardRef<MapRef, MapProps>(({
     } else {
       requestAnimationFrame(doUpdate);
     }
-  }, [transitData, selectedRoute, isInViewport, filteredRoutes, getRouteColor, selectedVehicleTypes]);
+  }, [transitData, selectedRoute, isInViewport, filteredRoutes, getRouteColor, selectedVehicleTypes, calculateNextStop]);
 
   // Update markers when transit data changes
   useEffect(() => {

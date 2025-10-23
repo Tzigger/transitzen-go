@@ -54,6 +54,13 @@ const ActiveJourneyMap = ({
     try {
       const defaultCenter = currentLocation || origin;
       
+      console.log('🗺️ Initializing ActiveJourneyMap:', {
+        origin,
+        destination,
+        routeSegments: routeSegments?.length || 0,
+        currentLocation,
+      });
+      
       // Initialize map with Leaflet
       const map = L.map(mapRef.current, {
         center: [defaultCenter.lat, defaultCenter.lng],
@@ -126,7 +133,7 @@ const ActiveJourneyMap = ({
 
   // Draw route on map with exact polylines
   useEffect(() => {
-    if (!isLoaded || !mapInstanceRef.current || !routeSegments.length) return;
+    if (!isLoaded || !mapInstanceRef.current) return;
 
     // Clear existing route layers
     routeLayersRef.current.forEach(layer => {
@@ -136,14 +143,47 @@ const ActiveJourneyMap = ({
     });
     routeLayersRef.current = [];
 
+    // If no route segments, draw a simple line between origin and destination
+    if (!routeSegments || routeSegments.length === 0) {
+      const simpleLine = L.polyline(
+        [[origin.lat, origin.lng], [destination.lat, destination.lng]],
+        {
+          color: '#3B82F6',
+          weight: 4,
+          opacity: 0.6,
+          dashArray: '10, 10',
+          smoothFactor: 1,
+        }
+      ).addTo(mapInstanceRef.current);
+      
+      routeLayersRef.current.push(simpleLine);
+      
+      // Fit map to show origin and destination
+      mapInstanceRef.current.fitBounds(
+        [[origin.lat, origin.lng], [destination.lat, destination.lng]],
+        { padding: [80, 80] }
+      );
+      
+      return;
+    }
+
     let stopCounter = 1;
 
     // Draw each segment with its polyline
     routeSegments.forEach((segment, index) => {
-      if (!segment.polyline || !mapInstanceRef.current) return;
-
-      // Decode the polyline to get exact coordinates
-      const coordinates = decodePolyline(segment.polyline);
+      if (!mapInstanceRef.current) return;
+      
+      let coordinates: [number, number][] = [];
+      
+      // Try to get coordinates from polyline or fallback to start/end locations
+      if (segment.polyline) {
+        coordinates = decodePolyline(segment.polyline);
+      } else if (segment.startLocation && segment.endLocation) {
+        coordinates = [
+          [segment.startLocation.lat, segment.startLocation.lng],
+          [segment.endLocation.lat, segment.endLocation.lng],
+        ];
+      }
       
       if (coordinates.length === 0) return;
 

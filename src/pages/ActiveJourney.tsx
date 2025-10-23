@@ -49,6 +49,7 @@ const ActiveJourney = () => {
 
   useEffect(() => {
     if (!journeyData) {
+      console.error('❌ No journey data provided to ActiveJourney');
       toast({
         title: "Eroare",
         description: "Nu există date despre călătorie",
@@ -58,15 +59,42 @@ const ActiveJourney = () => {
       return;
     }
 
+    console.log('✅ ActiveJourney initialized with data:', {
+      destination: journeyData.journey.destination,
+      origin_lat: journeyData.journey.origin_lat,
+      origin_lng: journeyData.journey.origin_lng,
+      destination_lat: journeyData.journey.destination_lat,
+      destination_lng: journeyData.journey.destination_lng,
+      route_details: journeyData.journey.route_details,
+      segments: journeyData.journey.route_details?.segments?.length || 0,
+    });
+
     // Initialize steps from journey data
     const segments = journeyData.journey.route_details?.segments || [];
-    const initialSteps: JourneyStep[] = segments.map((seg: any, idx: number) => ({
-      ...seg,
-      completed: false,
-      isActive: idx === 0,
-    }));
     
-    setSteps(initialSteps);
+    if (segments.length === 0) {
+      console.warn('⚠️ No route segments found, creating default walking segment');
+      // Create a default walking segment if no segments exist
+      const defaultSegment = {
+        type: 'WALKING',
+        from: journeyData.journey.origin || 'Pornire',
+        to: journeyData.journey.destination,
+        distance: '1 km',
+        duration: '15 min',
+        durationMinutes: 15,
+        completed: false,
+        isActive: true,
+      };
+      setSteps([defaultSegment]);
+    } else {
+      const initialSteps: JourneyStep[] = segments.map((seg: any, idx: number) => ({
+        ...seg,
+        completed: false,
+        isActive: idx === 0,
+      }));
+      setSteps(initialSteps);
+    }
+    
     setEstimatedTimeRemaining(journeyData.journey.estimated_duration || 0);
 
     // Start location tracking
@@ -291,19 +319,30 @@ const ActiveJourney = () => {
 
       {/* Map */}
       <div className="h-[50vh]">
-        <ActiveJourneyMap 
-          currentLocation={currentLocation}
-          journeySteps={steps}
-          origin={{
-            lat: journeyData.journey.origin_lat,
-            lng: journeyData.journey.origin_lng,
-          }}
-          destination={{
-            lat: journeyData.journey.destination_lat,
-            lng: journeyData.journey.destination_lng,
-          }}
-          routeSegments={journeyData.journey.route_details?.segments || []}
-        />
+        {journeyData?.journey?.origin_lat && journeyData?.journey?.destination_lat ? (
+          <ActiveJourneyMap 
+            currentLocation={currentLocation}
+            journeySteps={steps}
+            origin={{
+              lat: journeyData.journey.origin_lat,
+              lng: journeyData.journey.origin_lng,
+            }}
+            destination={{
+              lat: journeyData.journey.destination_lat,
+              lng: journeyData.journey.destination_lng,
+            }}
+            routeSegments={journeyData.journey.route_details?.segments || []}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted/20">
+            <div className="text-center p-6">
+              <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Nu sunt disponibile coordonate pentru hartă
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Sheet */}
