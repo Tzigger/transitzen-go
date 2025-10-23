@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Clock, CheckCircle2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,40 +10,46 @@ interface TicketQRCodeProps {
   onClose: () => void;
 }
 
+const QR_REFRESH_INTERVAL = 30; // seconds until QR regenerates
+
 const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProps) => {
-  const [timeRemaining, setTimeRemaining] = useState(2 * 60 * 60); // 2 hours in seconds
+  const [timeRemaining, setTimeRemaining] = useState(QR_REFRESH_INTERVAL);
   const [qrKey, setQrKey] = useState(0); // Key to force QR code re-render
   const expiryTime = useRef(new Date(Date.now() + 2 * 60 * 60 * 1000));
+  const expiryIso = useMemo(() => expiryTime.current.toISOString(), []);
 
   useEffect(() => {
-    // Timer for countdown
+    // Countdown until QR refresh
     const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
-
-    // Timer to regenerate QR code every 10 seconds
-    const qrTimer = setInterval(() => {
-      setQrKey((prev) => prev + 1);
-    }, 10000);
 
     return () => {
       clearInterval(timer);
-      clearInterval(qrTimer);
     };
   }, []);
 
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
+  useEffect(() => {
+    if (timeRemaining === 0) {
+      setQrKey((prevKey) => prevKey + 1);
+      setTimeRemaining(QR_REFRESH_INTERVAL);
+    }
+  }, [timeRemaining]);
+
+  const formatTime = (seconds: number) => `${seconds}s`;
+
+  const qrValue = useMemo(
+    () =>
+      JSON.stringify({
+        ticketId,
+        ticketType,
+        price,
+        expiryTime: expiryIso,
+        refreshedAt: Date.now(),
+        qrVersion: qrKey,
+      }),
+    [ticketId, ticketType, price, expiryIso, qrKey],
+  );
 
   const downloadQRCode = () => {
     const svg = document.getElementById("ticket-qr-code");
@@ -106,13 +112,13 @@ const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProp
       </div>
 
       {/* Timer */}
-      <div className="glass-card p-4 rounded-2xl mb-6 flex items-center justify-center gap-3">
-        <Clock className="w-5 h-5 text-primary" />
-        <div className="text-center">
+      <div className="glass-card p-4 rounded-2xl mb-6 flex items-center justify-center gap-4">
+        <Clock className="w-8 h-8 text-primary shrink-0" />
+        <div className="flex flex-col items-center">
           <div className="text-3xl font-bold text-foreground tabular-nums">
             {formatTime(timeRemaining)}
           </div>
-          <div className="text-sm text-muted-foreground">timp rămas</div>
+          <div className="text-sm text-muted-foreground">secunde până la reîmprospătare</div>
         </div>
       </div>
 
@@ -121,14 +127,7 @@ const TicketQRCode = ({ ticketId, ticketType, price, onClose }: TicketQRCodeProp
         <QRCodeSVG
           id="ticket-qr-code"
           key={qrKey}
-          value={JSON.stringify({
-            ticketId,
-            ticketType,
-            price,
-            expiryTime: expiryTime.current.toISOString(),
-            timestamp: Date.now(), // Dynamic data to change QR
-            qrVersion: qrKey, // Force QR to regenerate
-          })}
+          value={qrValue}
           size={220}
           level="H"
           includeMargin

@@ -91,10 +91,12 @@ const TicketSelector = () => {
         </SelectTrigger>
         <SelectContent>
           {ticketTypes.map((ticket) => (
-            <SelectItem key={ticket.id} value={ticket.id}>
+            <SelectItem key={ticket.id} value={ticket.id} className="group">
               <div className="flex items-center justify-between w-full gap-8">
                 <span>{ticket.name}</span>
-                <span className="font-semibold text-primary">{ticket.price} lei</span>
+                <span className="font-semibold text-primary transition-colors group-data-[highlighted]:text-white group-data-[state=checked]:text-white">
+                  {ticket.price} RON
+                </span>
               </div>
             </SelectItem>
           ))}
@@ -105,7 +107,7 @@ const TicketSelector = () => {
         <div className="mt-4 flex items-center justify-between p-4 glass-card rounded-2xl animate-fade-in">
           <span className="text-sm text-muted-foreground">Preț total:</span>
           <span className="text-2xl font-bold text-foreground">
-            {selectedTicketData.price} lei
+            {selectedTicketData.price} RON
           </span>
         </div>
       )}
@@ -113,7 +115,9 @@ const TicketSelector = () => {
       <Button
         onClick={handleContinueToPayment}
         disabled={!selectedTicket}
-        className="w-full h-14 mt-4 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-2xl transition-all disabled:opacity-50"
+        variant="default"
+        size="lg"
+        className="w-full h-14 mt-4 rounded-2xl text-base font-semibold transition-all disabled:bg-primary/30 disabled:text-primary-foreground/80"
       >
         Continuă la plată
       </Button>
