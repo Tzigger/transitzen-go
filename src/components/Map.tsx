@@ -102,8 +102,8 @@ const Map = forwardRef<MapRef, MapProps>(({
     console.log('🗺️ Route data:', selectedRoute);
 
     if (selectedRoute.shapes && selectedRoute.shapes.length > 0) {
-      const routeColor = selectedRoute.route_color ? `#${selectedRoute.route_color}` : 
-                        (selectedRoute.route_type === 0 ? '#8B5CF6' : '#3B82F6');
+      // Use purple color for the selected route polyline
+      const routeColor = '#8B5CF6'; // Purple color for selected routes
       
       console.log('🗺️ Drawing route with color:', routeColor);
       
@@ -111,8 +111,8 @@ const Map = forwardRef<MapRef, MapProps>(({
         selectedRoute.shapes.map((point: any) => [point.lat, point.lon]),
         {
           color: routeColor,
-          weight: 5,
-          opacity: 0.8,
+          weight: 6,
+          opacity: 0.9,
         }
       ).addTo(map.current);
 
@@ -561,8 +561,8 @@ const Map = forwardRef<MapRef, MapProps>(({
         }
       });
 
-      // Filter stops by viewport (show max 30 for performance)
-      const nearbyStops = transitData.stops
+      // Filter stops by viewport and selected route
+      let nearbyStops = transitData.stops
         ?.filter((stop: any) => {
           if (!stop.latitude || !stop.longitude || 
               typeof stop.latitude !== 'number' || 
@@ -571,8 +571,27 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
 
           return isInViewport(stop.latitude, stop.longitude);
-        })
-        .slice(0, 30) || [];
+        }) || [];
+
+      // If a route is selected, only show stops for that route
+      if (selectedRoute && transitData.tripStopSequences) {
+        const routeStopIds = new Set<number>();
+        
+        // Find all trips for this route and collect their stop IDs
+        Object.entries(transitData.tripStopSequences).forEach(([tripId, sequence]: [string, any]) => {
+          const trip = transitData.trips?.find((t: any) => t.trip_id === tripId);
+          if (trip && trip.route_id === selectedRoute.route_id) {
+            sequence.forEach((stopSeq: any) => {
+              routeStopIds.add(stopSeq.stopId);
+            });
+          }
+        });
+        
+        // Filter to only stops that are part of this route
+        nearbyStops = nearbyStops.filter((stop: any) => routeStopIds.has(stop.id));
+      }
+      
+      nearbyStops = nearbyStops.slice(0, 50); // Show more stops when route is selected
 
       nearbyStops.forEach((stop: any) => {
         const stopId = stop.id || `${stop.code}-${stop.latitude}-${stop.longitude}`;
@@ -600,15 +619,11 @@ const Map = forwardRef<MapRef, MapProps>(({
           marker.on('click', () => {
             setSelectedStop(stop);
             setIsStopDrawerOpen(true);
-            // Clear selected vehicle and route
             setSelectedVehicle(null);
             setIsVehicleDialogOpen(false);
-            setSelectedRoute(null);
+            // Don't clear selected route when clicking a stop on that route
             if (vehicleRouteLayer.current) {
               map.current?.removeLayer(vehicleRouteLayer.current);
-            }
-            if (selectedRouteLayer.current) {
-              map.current?.removeLayer(selectedRouteLayer.current);
             }
           });
 
