@@ -72,9 +72,8 @@ const Map = forwardRef<MapRef, MapProps>(({
   const userLocationMarker = useRef<L.Marker | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   
-  // Use polling instead of WebSocket subscription to prevent performance issues
+  // Use state for transit data (updated from viewport query)
   const [transitData, setTransitData] = useState<any>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const mapBoundsRef = useRef<L.LatLngBounds | null>(null);
@@ -334,32 +333,73 @@ const Map = forwardRef<MapRef, MapProps>(({
   }, [center.lat, center.lng, zoom, theme]);
 
   // Poll transit data every 30 seconds (like Supabase implementation)
-  const fetchTransitDataAction = useAction(api.actions.fetchTransitData);
-  
-  // Function to fetch transit data (can be called manually or by polling)
-  const fetchTransitData = useCallback(async () => {
-    try {
-      const data = await fetchTransitDataAction();
-      setTransitData(data);
-      console.log('🔄 Transit data fetched:', data?.vehicles?.length || 0, 'vehicles');
-    } catch (error) {
-      console.error('❌ Error fetching transit data:', error);
-    }
-  }, [fetchTransitDataAction]);
-  
-  useEffect(() => {
-    // Initial fetch
-    fetchTransitData();
+  // BUT use viewport-based filtering to avoid loading all 801 stops
+  const [viewportBounds, setViewportBounds] = useState<{
+    minLat: number;
+    maxLat: number;
+    minLng: number;
+    maxLng: number;
+  } | null>(null);
 
-    // Poll every 30 seconds
-    pollIntervalRef.current = setInterval(fetchTransitData, 30000);
+  // Use query with viewport filtering instead of action
+  // Pass undefined as args when viewportBounds is null to skip the query
+  const transitDataFromViewport = useQuery(
+    api.transit.getTransitDataInViewport,
+    viewportBounds ?? undefined
+  );
+
+  // Update transitData when viewport data changes
+  useEffect(() => {
+    if (transitDataFromViewport) {
+      setTransitData(transitDataFromViewport);
+      console.log('🔄 Transit data updated from viewport:', {
+        vehicles: transitDataFromViewport.vehicles?.length || 0,
+        stops: transitDataFromViewport.stops?.length || 0,
+        routes: transitDataFromViewport.routes?.length || 0,
+      });
+    }
+  }, [transitDataFromViewport]);
+
+  // Update viewport bounds when map moves or zooms
+  useEffect(() => {
+    if (!map.current) return;
+
+    const updateViewportBounds = () => {
+      if (!map.current) return;
+      
+      const bounds = map.current.getBounds();
+      const newBounds = {
+        minLat: bounds.getSouth(),
+        maxLat: bounds.getNorth(),
+        minLng: bounds.getWest(),
+        maxLng: bounds.getEast(),
+      };
+      
+      setViewportBounds(newBounds);
+      console.log('🗺️ Viewport bounds updated:', newBounds);
+    };
+
+    // Initial bounds
+    updateViewportBounds();
+
+    // Update on move/zoom (debounced to avoid excessive queries)
+    let debounceTimer: NodeJS.Timeout;
+    const debouncedUpdate = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(updateViewportBounds, 500); // 500ms debounce
+    };
+
+    map.current.on('moveend', debouncedUpdate);
+    map.current.on('zoomend', debouncedUpdate);
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
+      if (map.current) {
+        map.current.off('moveend', debouncedUpdate);
+        map.current.off('zoomend', debouncedUpdate);
       }
+      clearTimeout(debounceTimer);
     };
-  }, [fetchTransitData]);
+  }, []);
 
   // Update tile layer when theme changes
   useEffect(() => {
@@ -767,13 +807,15 @@ const Map = forwardRef<MapRef, MapProps>(({
         return true;
       }) || [];
 
+      console.log(`🚏 Total stops in viewport: ${nearbyStops.length}`);
+
       // If a route is selected from stop drawer or manual filters, only show stops for those routes
       const activeFilters = selectedRoute 
         ? [selectedRoute.route_id] 
         : (filteredRoutes.length > 0 ? filteredRoutes : null);
         
       if (activeFilters && transitData.tripStopSequences) {
-        const routeStopIds = new Set<number>();
+        const routeStopIds = new Set<string>();
         
         // Find all trips for filtered routes and collect their stop IDs
         Object.entries(transitData.tripStopSequences).forEach(([tripId, sequence]: [string, any]) => {
@@ -784,25 +826,47 @@ const Map = forwardRef<MapRef, MapProps>(({
           
           if (routeId && activeFilters.includes(routeId)) {
             sequence.forEach((stopSeq: any) => {
-              routeStopIds.add(stopSeq.stopId);
+              routeStopIds.add(String(stopSeq.stopId));
             });
           }
         });
         
+        console.log(`🔍 Filtered to stops on routes ${activeFilters.join(', ')}: ${routeStopIds.size} stops`);
+        
         // Filter to only stops that are part of filtered routes
-        nearbyStops = nearbyStops.filter((stop: any) => routeStopIds.has(stop.id));
+        nearbyStops = nearbyStops.filter((stop: any) => routeStopIds.has(String(stop.id)));
       }
       
-      // Limit stops based on whether we have active filters
-      // If filters are active, show more stops (they are filtered by route already)
-      const maxStops = activeFilters ? 100 : 50;
-      nearbyStops = nearbyStops.slice(0, maxStops);
-
-      // Render stops - if filters are active, always show them
-      // Otherwise only show if there are 20 or fewer to avoid clutter at small zoom
-      const shouldRenderStops = activeFilters || nearbyStops.length <= 20;
+      // Limit stops based on zoom level and whether we have active filters
+      const mapZoom = map.current?.getZoom() || 13;
+      let maxStops = 0; // Default: don't show stops
       
-      if (shouldRenderStops) {
+      // Only show stops when zoomed in enough OR when filters are active
+      if (activeFilters) {
+        // If filters are active, show all filtered stops (already filtered by route)
+        maxStops = 100; // Reduced from 200
+      } else if (mapZoom >= 16) {
+        // Very high zoom - show many stops
+        maxStops = 50; // Reduced from 100
+      } else if (mapZoom >= 15) {
+        // High zoom - moderate stops
+        maxStops = 30; // Reduced from 50
+      } else if (mapZoom >= 14) {
+        // Medium zoom - fewer stops
+        maxStops = 15; // Reduced from 20
+      } else if (mapZoom >= 13) {
+        // Low zoom - very few stops
+        maxStops = 5; // Reduced from 20
+      } else {
+        // Very low zoom (< 13) - no stops to avoid clutter
+        maxStops = 0;
+      }
+      
+      nearbyStops = nearbyStops.slice(0, maxStops);
+      console.log(`🚏 Rendering ${nearbyStops.length} stops (max: ${maxStops}, zoom: ${mapZoom})`);
+
+      // Only render stops if we have any after filtering
+      if (nearbyStops.length > 0) {
         nearbyStops.forEach((stop: any) => {
         const stopId = stop.id || `${stop.code}-${stop.latitude}-${stop.longitude}`;
         currentStopIds.add(stopId);
@@ -843,7 +907,7 @@ const Map = forwardRef<MapRef, MapProps>(({
           }
         }
       });
-      } // Close the if (nearbyStops.length <= 20) block
+      }
 
       // Remove stop markers that are out of range
       stopMarkersRef.current.forEach((marker, id) => {
@@ -879,11 +943,8 @@ const Map = forwardRef<MapRef, MapProps>(({
     updateMarkers();
   }, [updateMarkers]);
 
-  // Force immediate fetch and update when filters change
-  useEffect(() => {
-    console.log('🔄 Filter changed, fetching fresh data immediately');
-    fetchTransitData(); // Fetch fresh data from DB
-  }, [selectedVehicleTypes, filteredRoutes, selectedRoute, fetchTransitData]);
+  // Filters change already triggers viewport requery automatically via Convex reactivity
+  // No need for manual fetch - viewport bounds query will auto-update
 
   // Calculate route using Google Maps API when destination changes
   useEffect(() => {

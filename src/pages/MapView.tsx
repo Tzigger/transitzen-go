@@ -42,8 +42,12 @@ const MapView = () => {
   const mapRef = useRef<MapRef>(null);
   const searchPlacesAction = useAction(api.actions.searchPlaces);
   
-  // Use query to get transit data from database (updated by cron job)
-  const transitData = useQuery(api.transit.getTransitData);
+  // Use optimized query to get transit data for nearby vehicles (filtered by location)
+  const transitData = useQuery(api.transit.getTransitDataForNearbyVehicles, {
+    userLat: USER_LOCATION.lat,
+    userLng: USER_LOCATION.lng,
+    radiusKm: 1, // 1km radius
+  });
   
   const [selectedVehicles, setSelectedVehicles] = useState<string[]>(['bus', 'tram']);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -137,47 +141,10 @@ const MapView = () => {
         const vehicleType = vehicle.vehicle_type === 0 ? 'tram' : 'bus';
         const vehicleColor = vehicle.vehicle_type === 0 ? '#8B5CF6' : '#3B82F6';
 
-        // Find next station
-        let nextStation = null;
-        let nextStationDistance = null;
-        
-        if (transitData.routeToTripMap && transitData.tripStopSequences && transitData.stops) {
-          const tripId = transitData.routeToTripMap[vehicle.routeId];
-          
-          if (tripId && transitData.tripStopSequences[tripId]) {
-            const stopSequence = transitData.tripStopSequences[tripId];
-            
-            // Calculate distances to all stops in the sequence
-            const stopsWithDistance = stopSequence.map((stopInfo: any) => {
-              const stop = transitData.stops.find((s: any) => s.id === stopInfo.stopId);
-              if (!stop) return null;
-              
-              const stopDist = calculateDistance(
-                vehicle.latitude,
-                vehicle.longitude,
-                stop.latitude,
-                stop.longitude
-              );
-              
-              return {
-                ...stopInfo,
-                stop,
-                distanceFromVehicle: stopDist,
-              };
-            }).filter(Boolean);
-            
-            // Find the closest stop that's ahead (not behind the vehicle)
-            // We'll assume the vehicle is moving towards the closest stop
-            const closestStop = stopsWithDistance
-              .filter((s: any) => s.distanceFromVehicle > 0.05) // More than 50m away
-              .sort((a: any, b: any) => a.distanceFromVehicle - b.distanceFromVehicle)[0];
-            
-            if (closestStop) {
-              nextStation = closestStop.stop.name;
-              nextStationDistance = `${Math.round(closestStop.distanceFromVehicle * 1000)}m`;
-            }
-          }
-        }
+        // Next station calculation temporarily disabled to avoid timeout
+        // TODO: Re-enable when we have optimized stop/trip data query
+        const nextStation = null;
+        const nextStationDistance = null;
 
         return {
           id: vehicle.id,

@@ -645,3 +645,61 @@ export const getTransitDataInViewport = query({
     };
   },
 });
+
+// Optimized query for MapView nearby vehicles (minimal data, no timeout)
+// Only returns vehicles + basic route info, no stops/stop times to avoid timeout
+export const getTransitDataForNearbyVehicles = query({
+  args: {
+    userLat: v.number(),
+    userLng: v.number(),
+    radiusKm: v.number(), // e.g., 1km
+  },
+  handler: async (ctx, args) => {
+    // Calculate rough bounds (1 degree ≈ 111km)
+    const latDelta = args.radiusKm / 111;
+    const lngDelta = args.radiusKm / (111 * Math.cos(args.userLat * Math.PI / 180));
+    
+    const minLat = args.userLat - latDelta;
+    const maxLat = args.userLat + latDelta;
+    const minLng = args.userLng - lngDelta;
+    const maxLng = args.userLng + lngDelta;
+
+    // Only load vehicles and routes (skip stops/stopTimes/trips to avoid timeout)
+    const [allVehicles, routes] = await Promise.all([
+      ctx.db.query("transitVehicles").collect(),
+      ctx.db.query("transitRoutes").collect(),
+    ]);
+
+    // Filter vehicles within radius
+    const vehicles = allVehicles.filter(v => 
+      v.latitude >= minLat && 
+      v.latitude <= maxLat &&
+      v.longitude >= minLng && 
+      v.longitude <= maxLng
+    );
+
+    return {
+      vehicles: vehicles.map(v => ({
+        id: v.vehicleId,
+        routeId: v.routeId,
+        label: v.label,
+        latitude: v.latitude,
+        longitude: v.longitude,
+        speed: v.speed,
+        timestamp: v.timestamp,
+        vehicle_type: v.vehicleType,
+        wheelchair_accessible: v.wheelchairAccessible,
+      })),
+      stops: [], // No stops for MapView nearby vehicles drawer
+      routes: routes.map(r => ({
+        route_id: r.routeId,
+        route_short_name: r.routeShortName,
+        route_long_name: r.routeLongName,
+        shapes: r.shapes,
+      })),
+      routeToTripMap: {}, // Not needed for basic vehicle display
+      tripStopSequences: {}, // Not needed for basic vehicle display
+      timestamp: new Date().toISOString(),
+    };
+  },
+});
