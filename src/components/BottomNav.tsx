@@ -18,7 +18,7 @@ const BottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-4 left-4 right-4 glass-card backdrop-blur-2xl z-50 rounded-[2rem] shadow-2xl mx-auto max-w-md">
+    <nav className="fixed bottom-4 left-4 right-4 glass-card backdrop-blur-2xl z-50 rounded-[2rem] shadow-2xl mx-auto max-w-md safe-area-bottom">
       <div className="flex items-center justify-around px-2 py-3">
         {navItems.map((item) => {
           const Icon = item.icon;

@@ -100,6 +100,9 @@ const ActiveJourney = () => {
       segments: journeyData.journey.route_details?.segments?.length || 0,
     });
 
+    // Request notification permissions immediately
+    requestNotificationPermissions();
+
     // Initialize steps from journey data
     const segments = journeyData.journey.route_details?.segments || [];
     
@@ -138,6 +141,34 @@ const ActiveJourney = () => {
       stopTracking();
     };
   }, []);
+
+  /**
+   * Request notification permissions
+   */
+  const requestNotificationPermissions = async () => {
+    try {
+      const { notificationService } = await import('@/lib/notifications/notification-service');
+      const hasPermission = await notificationService.checkPermission();
+      
+      if (!hasPermission) {
+        const granted = await notificationService.requestPermission();
+        if (granted) {
+          console.log('✅ Notification permissions granted');
+        } else {
+          console.warn('⚠️ Notification permissions denied');
+          toast({
+            title: "Notificări dezactivate",
+            description: "Activează notificările pentru a primi alerte",
+            variant: "destructive",
+          });
+        }
+      } else {
+        console.log('✅ Notification permissions already granted');
+      }
+    } catch (error) {
+      console.error('Error requesting notification permissions:', error);
+    }
+  };
 
   /**
    * Initialize proximity zones from journey segments
@@ -252,6 +283,69 @@ const ActiveJourney = () => {
     );
 
     console.log('🗺️ GPS tracking started');
+    
+    // Send journey start notifications sequence
+    sendJourneyStartNotifications();
+  };
+
+  const sendJourneyStartNotifications = async () => {
+    const { notificationService } = await import('@/lib/notifications/notification-service');
+    
+    // 1. Immediate notification: Reminder to leave for station (15 seconds after start)
+    setTimeout(async () => {
+      await notificationService.sendNotification({
+        id: `journey-start-${journeyData?.journey.id || Date.now()}`,
+        title: '🚀 Head to the station!',
+        body: 'It\'s time to head to the bus stop.',
+        data: {
+          type: 'journey_start',
+          journeyId: journeyData?.journey.id,
+        },
+      });
+      
+      toast({
+        title: "🚀 Head to the station!",
+        description: "It's time to head to the bus stop.",
+      });
+    }, 15000); // 15 seconds
+
+    // 2. Traffic alert notification (15 seconds after first notification = 30 seconds total)
+    setTimeout(async () => {
+      await notificationService.sendNotification({
+        id: `traffic-alert-${journeyData?.journey.id || Date.now()}`,
+        title: '🚦 Traffic on your route',
+        body: 'Heads up! There\'s traffic on your route. Plan accordingly.',
+        data: {
+          type: 'traffic_alert',
+          journeyId: journeyData?.journey.id,
+        },
+      });
+      
+      toast({
+        title: "🚦 Traffic on your route",
+        description: "Heads up! There's traffic on your route.",
+        variant: "destructive",
+      });
+    }, 30000); // 30 seconds
+
+    // 3. Delay warning notification (30 seconds distance)
+    setTimeout(async () => {
+      await notificationService.sendNotification({
+        id: `delay-warning-${journeyData?.journey.id || Date.now()}`,
+        title: '⚠️ You\'re running late',
+        body: 'Hurry up! You might miss the bus.',
+        data: {
+          type: 'delay_warning',
+          journeyId: journeyData?.journey.id,
+        },
+      });
+      
+      toast({
+        title: "⚠️ You're running late",
+        description: "Hurry up! You might miss the bus.",
+        variant: "destructive",
+      });
+    }, 60000); // 60 seconds (30 seconds after traffic alert)
   };
 
   const stopTracking = () => {
@@ -389,7 +483,7 @@ const ActiveJourney = () => {
   const currentStep = steps[currentStepIndex];
 
   return (
-    <div className="min-h-screen bg-background relative">
+    <div className="min-h-screen bg-background relative safe-area-top">
       {/* Header */}
       <header className="absolute top-4 left-4 right-4 z-50">
         <div className="glass-card backdrop-blur-xl rounded-[2rem] shadow-2xl">

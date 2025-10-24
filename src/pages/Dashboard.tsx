@@ -69,7 +69,7 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24 safe-area-top">
       {/* Main Content */}
       <div className="px-4 pt-6 space-y-6 max-w-md mx-auto">
         {/* Welcome Section */}

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuth } from "@/lib/convex";
+import { notificationService } from "@/lib/notifications/notification-service";
 
 const USER_LOCATION = { lat: 47.1585, lng: 27.6014 };
 
@@ -227,6 +228,7 @@ const CreateJourney = () => {
     }
   }, [useCurrentLocation]);
 
+<<<<<<< Updated upstream
   // Folosește rutele pre-calculate dacă există
   useEffect(() => {
     if (prefilledData?.calculatedRoutes && prefilledData.calculatedRoutes.length > 0) {
@@ -321,6 +323,24 @@ const CreateJourney = () => {
       };
     });
   };
+=======
+  // Request notification permission on mount
+  useEffect(() => {
+    const requestNotificationPermission = async () => {
+      const hasPermission = await notificationService.checkPermission();
+      if (!hasPermission) {
+        const granted = await notificationService.requestPermission();
+        if (granted) {
+          toast({
+            title: "Notificări activate ✓",
+            description: "Vei primi alerte pentru călătoriile tale",
+          });
+        }
+      }
+    };
+    requestNotificationPermission();
+  }, []);
+>>>>>>> Stashed changes
 
   const handleOriginSearch = async (query: string) => {
     if (!query.trim() || query.length < 3) {
@@ -541,7 +561,7 @@ const CreateJourney = () => {
       const departureParts = selectedRoute.departureTime.match(/(\d+):(\d+)/);
       const departureTime = departureParts ? `${departureParts[1]}:${departureParts[2]}` : null;
 
-      await createJourneyMutation({
+      const journeyId = await createJourneyMutation({
         userId,
         origin: useCurrentLocation ? "Locația curentă" : origin,
         originLat: originCoords.lat,
@@ -564,9 +584,40 @@ const CreateJourney = () => {
         notifyRouteChanges,
       });
 
+      // Schedule notifications if enabled
+      if (notifyDeparture && departureTime) {
+        try {
+          const departureDateTime = new Date(`${date}T${departureTime}`);
+          
+          // Schedule departure notification (10 minutes before)
+          await notificationService.scheduleDepartureNotification(
+            journeyId.toString(),
+            departureDateTime,
+            useCurrentLocation ? "Locația curentă" : origin,
+            destination.trim(),
+            10 // 10 minutes advance
+          );
+
+          // Schedule pre-departure notification (30 minutes before)
+          await notificationService.schedulePreDepartureNotification(
+            journeyId.toString(),
+            departureDateTime,
+            destination.trim(),
+            30 // 30 minutes advance
+          );
+
+          console.log('✅ Notifications scheduled successfully');
+        } catch (notifError) {
+          console.error('Failed to schedule notifications:', notifError);
+          // Don't fail the journey creation if notifications fail
+        }
+      }
+
       toast({
         title: "Success! 🎉",
-        description: "Călătoria ta a fost planificată cu succes",
+        description: notifyDeparture 
+          ? "Călătoria și notificările au fost programate"
+          : "Călătoria ta a fost planificată cu succes",
       });
 
       navigate('/history');
@@ -656,7 +707,7 @@ const CreateJourney = () => {
 
   return (
     <div 
-      className="min-h-screen gradient-dark pb-24 transition-transform"
+      className="min-h-screen gradient-dark pb-24 transition-transform safe-area-top"
       style={{
         transform: `translateY(${touchCurrent}px)`,
         opacity: 1 - swipeProgress * 0.3,

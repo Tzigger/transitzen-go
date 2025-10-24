@@ -45,6 +45,23 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>UIStatusBarHidden</key>
+	<false/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs location access to provide transit directions and real-time updates.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -53,5 +70,7 @@
 	<string>This app needs camera access to scan QR codes for tickets.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs photo library access to save ticket images.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>This app needs notification access to send journey alerts and departure reminders.</string>
 </dict>
 </plist>

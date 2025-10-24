@@ -6,7 +6,7 @@ const Welcome = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen gradient-dark flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen gradient-dark flex flex-col items-center justify-center p-6 relative overflow-hidden safe-all-fixed">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse-slow" />

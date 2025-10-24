@@ -3,7 +3,7 @@ import { Smartphone, Clock, Leaf, TrendingUp, Navigation, Bell, Map } from "luci
 
 const LandingPage = () => {
   return (
-    <div className="min-h-screen gradient-dark overflow-hidden">
+    <div className="min-h-screen gradient-dark overflow-hidden safe-all-fixed">
       {/* Hero Section */}
       <div className="container mx-auto px-6 py-12">
         <div className="max-w-4xl mx-auto text-center">

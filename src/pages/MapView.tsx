@@ -272,7 +272,7 @@ const MapView = () => {
   }, [transitData, userLocation]);
 
   return (
-    <div className="min-h-screen bg-background pb-24 relative">
+    <div className="min-h-screen bg-background pb-24 relative safe-area-top">
       {/* Header */}
       <header className="absolute top-4 left-4 right-4 z-40 max-w-md mx-auto">
         <div className="glass-card backdrop-blur-xl rounded-[2rem] shadow-2xl">
