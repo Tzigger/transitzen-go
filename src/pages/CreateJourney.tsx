@@ -228,7 +228,6 @@ const CreateJourney = () => {
     }
   }, [useCurrentLocation]);
 
-<<<<<<< Updated upstream
   // Folosește rutele pre-calculate dacă există
   useEffect(() => {
     if (prefilledData?.calculatedRoutes && prefilledData.calculatedRoutes.length > 0) {
@@ -323,7 +322,7 @@ const CreateJourney = () => {
       };
     });
   };
-=======
+
   // Request notification permission on mount
   useEffect(() => {
     const requestNotificationPermission = async () => {
@@ -340,7 +339,6 @@ const CreateJourney = () => {
     };
     requestNotificationPermission();
   }, []);
->>>>>>> Stashed changes
 
   const handleOriginSearch = async (query: string) => {
     if (!query.trim() || query.length < 3) {
