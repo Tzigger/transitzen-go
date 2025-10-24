@@ -59,16 +59,19 @@ export const upsertStop = mutation({
       .first();
 
     if (existing) {
-      return existing._id; // Don't update stops, they're static
+      // Stops are static - don't update if already exists
+      return 'skipped';
     }
 
-    return await ctx.db.insert("transitStops", {
+    const newId = await ctx.db.insert("transitStops", {
       stopId: args.id,
       stopName: args.name,
       stopLat: args.latitude,
       stopLon: args.longitude,
       stopCode: args.code,
     });
+    
+    return newId;
   },
 });
 
@@ -102,6 +105,73 @@ export const upsertRoute = mutation({
       return existing._id;
     } else {
       return await ctx.db.insert("transitRoutes", routeData);
+    }
+  },
+});
+
+// Upsert individual trip
+export const upsertTrip = mutation({
+  args: {
+    trip_id: v.string(),
+    route_id: v.string(),
+    shape_id: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("transitTrips")
+      .withIndex("by_trip_id", (q) => q.eq("tripId", args.trip_id))
+      .first();
+
+    const tripData = {
+      tripId: args.trip_id,
+      routeId: args.route_id,
+      shapeId: args.shape_id,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, tripData);
+      return existing._id;
+    } else {
+      return await ctx.db.insert("transitTrips", tripData);
+    }
+  },
+});
+
+// Upsert individual stop time
+export const upsertStopTime = mutation({
+  args: {
+    trip_id: v.string(),
+    stop_id: v.string(),
+    stop_sequence: v.number(),
+    arrival_time: v.optional(v.string()),
+    departure_time: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Delete existing stop time for this trip+stop+sequence combination
+    const existing = await ctx.db
+      .query("transitStopTimes")
+      .withIndex("by_trip_id", (q) => q.eq("tripId", args.trip_id))
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("stopId"), args.stop_id),
+          q.eq(q.field("stopSequence"), args.stop_sequence)
+        )
+      )
+      .first();
+
+    const stopTimeData = {
+      tripId: args.trip_id,
+      stopId: args.stop_id,
+      stopSequence: args.stop_sequence,
+      arrivalTime: args.arrival_time,
+      departureTime: args.departure_time,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, stopTimeData);
+      return existing._id;
+    } else {
+      return await ctx.db.insert("transitStopTimes", stopTimeData);
     }
   },
 });
