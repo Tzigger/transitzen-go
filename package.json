@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "update-ip": "bash ./scripts/update-local-ip.sh",
     "convex:dev": "npx convex dev",
     "convex:deploy": "npx convex deploy",
     "convex:codegen": "npx convex codegen",
