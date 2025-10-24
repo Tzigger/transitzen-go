@@ -136,9 +136,10 @@ export const calculateTransitRoute = action({
       directionsUrl.searchParams.append('destination', `${args.destination.lat},${args.destination.lng}`);
       directionsUrl.searchParams.append('mode', 'transit');
       directionsUrl.searchParams.append('transit_mode', 'bus|tram');
-      directionsUrl.searchParams.append('alternatives', 'true');
+      directionsUrl.searchParams.append('alternatives', 'true'); // Obține rute alternative
       directionsUrl.searchParams.append('region', 'ro');
       directionsUrl.searchParams.append('language', 'ro');
+      directionsUrl.searchParams.append('traffic_model', 'best_guess'); // Include date despre trafic
       directionsUrl.searchParams.append('key', GOOGLE_MAPS_API_KEY);
 
       if (args.arrivalTime) {
@@ -200,6 +201,10 @@ export const calculateTransitRoute = action({
               legData.from = transit.departure_stop?.name || '';
               legData.to = transit.arrival_stop?.name || '';
               legData.vehicleType = transit.line?.vehicle?.type || 'BUS';
+              legData.numStops = transit.num_stops || 0;
+              // Extrage timpii de plecare și sosire
+              legData.departureTime = transit.departure_time?.text || '';
+              legData.arrivalTime = transit.arrival_time?.text || '';
             }
 
             legs.push(legData);
@@ -209,15 +214,38 @@ export const calculateTransitRoute = action({
         console.log(`✅ Processed route with ${legs.length} legs, total coordinates:`, 
           legs.reduce((sum, leg) => sum + (leg.coordinates?.length || 0), 0));
 
+        // Calculate some metadata for the route
+        const transitLegs = legs.filter(leg => leg.mode === 'TRANSIT');
+        const walkingLegs = legs.filter(leg => leg.mode === 'WALK');
+        const transferCount = Math.max(0, transitLegs.length - 1);
+
+        // Extract departure and arrival times from the main leg (first leg of route)
+        const mainLeg = route.legs[0];
+        const departureTime = mainLeg?.departure_time?.text || '';
+        const arrivalTime = mainLeg?.arrival_time?.text || '';
+
         return {
           legs: legs,
-          duration: route.legs[0]?.duration?.text || '',
-          distance: route.legs[0]?.distance?.text || '',
+          duration: mainLeg?.duration?.text || '',
+          durationValue: mainLeg?.duration?.value || 0, // în secunde
+          distance: mainLeg?.distance?.text || '',
+          distanceValue: mainLeg?.distance?.value || 0, // în metri
           start: args.origin,
           end: args.destination,
           summary: route.summary || '',
+          transferCount: transferCount,
+          walkingDistance: walkingLegs.reduce((sum, leg) => sum + (leg.distance || 0), 0),
+          // Estimare crowding bazată pe număr de transferuri (mai puține = mai aglomerat)
+          estimatedCrowding: transferCount === 0 ? 'high' : transferCount === 1 ? 'medium' : 'low',
+          warnings: route.warnings || [],
+          // Timpii reali de la Google
+          departureTime: departureTime,
+          arrivalTime: arrivalTime,
         };
       });
+
+      // Sortează rutele: cea mai rapidă prima
+      routes.sort((a: any, b: any) => a.durationValue - b.durationValue);
 
       return { routes: routes };
     } catch (error) {

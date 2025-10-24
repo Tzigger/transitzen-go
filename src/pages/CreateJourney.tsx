@@ -26,7 +26,7 @@ const CreateJourney = () => {
   const createJourneyMutation = useMutation(api.journeys.createJourney);
   const createFavoriteRouteMutation = useMutation(api.favoriteRoutes.createFavoriteRoute);
   const searchPlacesAction = useAction(api.actions.searchPlaces);
-  const planRouteAction = useAction(api.actions.planRoute);
+  const calculateTransitRouteAction = useAction(api.actions.calculateTransitRoute);
   
   // Get prefilled data from navigation state
   const prefilledData = location.state as {
@@ -34,6 +34,7 @@ const CreateJourney = () => {
     prefilledOriginCoords?: { lat: number; lng: number };
     prefilledDestination?: string;
     prefilledDestinationCoords?: { lat: number; lng: number };
+    calculatedRoutes?: any[]; // Rute pre-calculate din MapView
   } | null;
   
   const [origin, setOrigin] = useState(prefilledData?.prefilledOrigin || "");
@@ -53,8 +54,19 @@ const CreateJourney = () => {
   const [originSearchResults, setOriginSearchResults] = useState<any[]>([]);
   const [showOriginResults, setShowOriginResults] = useState(false);
   const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
-  const [arrivalTime, setArrivalTime] = useState("");
-  const [date, setDate] = useState("");
+  
+  // Initialize date and time with defaults when coming from MapView
+  const getDefaultDateTime = () => {
+    const now = new Date();
+    now.setHours(now.getHours() + 1); // O oră în viitor implicit
+    const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const timeStr = now.toTimeString().slice(0, 5); // HH:MM
+    return { dateStr, timeStr };
+  };
+  
+  const defaults = getDefaultDateTime();
+  const [arrivalTime, setArrivalTime] = useState(prefilledData?.calculatedRoutes ? defaults.timeStr : "");
+  const [date, setDate] = useState(prefilledData?.calculatedRoutes ? defaults.dateStr : "");
   const [recurringDays, setRecurringDays] = useState<number[]>([]);
   const [notifyDeparture, setNotifyDeparture] = useState(true);
   const [notifyDelays, setNotifyDelays] = useState(true);
@@ -188,6 +200,101 @@ const CreateJourney = () => {
     }
   }, [useCurrentLocation]);
 
+  // Folosește rutele pre-calculate dacă există
+  useEffect(() => {
+    if (prefilledData?.calculatedRoutes && prefilledData.calculatedRoutes.length > 0) {
+      console.log('📍 Using pre-calculated routes from MapView:', prefilledData.calculatedRoutes);
+      
+      // Calculăm timpul de sosire dorit
+      let targetArrivalTime: Date | undefined;
+      if (arrivalTime && date) {
+        targetArrivalTime = new Date(`${date}T${arrivalTime}`);
+      }
+      
+      // Transform routes to RouteDisplay format
+      const transformedRoutes = transformGoogleRoutesToDisplay(prefilledData.calculatedRoutes, targetArrivalTime);
+      setRoutes(transformedRoutes);
+      setSelectedRoute(transformedRoutes[0]); // Selectează prima rută (cea mai rapidă)
+      
+      // Arată toast cu info că poate recalcula pentru alte ore
+      if (arrivalTime && date) {
+        toast({
+          title: "💡 Sfat",
+          description: "Modifică ora sau data și apasă 'Recalculează' pentru rute actualizate",
+          duration: 5000,
+        });
+      }
+    }
+  }, [prefilledData?.calculatedRoutes]); // Doar la mount, nu la schimbarea orei
+
+  // Helper function to transform Google routes to RouteDisplay format
+  const transformGoogleRoutesToDisplay = (googleRoutes: any[], targetArrivalTime?: Date) => {
+    return googleRoutes.map((route: any) => {
+      const segments = route.legs.map((leg: any) => {
+        if (leg.mode === 'TRANSIT') {
+          return {
+            mode: 'TRANSIT',
+            vehicle: {
+              type: leg.vehicleType || 'BUS',
+              line: leg.routeShortName || '?',
+              name: leg.routeName || '',
+            },
+            from: leg.startLocation?.name || leg.from || 'Stație necunoscută',
+            to: leg.endLocation?.name || leg.to || 'Stație necunoscută',
+            duration: leg.duration || 'N/A',
+            stops: leg.numStops || 0,
+            distance: leg.distance || 'N/A',
+            crowdingLevel: route.estimatedCrowding || 'medium',
+          };
+        } else {
+          return {
+            mode: 'WALK',
+            from: '',
+            to: '',
+            duration: leg.duration || 'N/A',
+            distance: leg.distance || 'N/A',
+          };
+        }
+      });
+
+      // Folosește timpii reali de la Google dacă există
+      let departureTime: string;
+      let arrivalTimeStr: string;
+      
+      if (route.departureTime && route.arrivalTime) {
+        // Google a returnat timpi reali (format: "1:07 AM" sau "13:07")
+        departureTime = route.departureTime;
+        arrivalTimeStr = route.arrivalTime;
+      } else {
+        // Fallback: calculează bazat pe targetArrivalTime sau timpul curent
+        let arrivalDate: Date;
+        let departureDate: Date;
+        
+        if (targetArrivalTime) {
+          arrivalDate = targetArrivalTime;
+          departureDate = new Date(arrivalDate.getTime() - (route.durationValue * 1000));
+        } else {
+          departureDate = new Date();
+          arrivalDate = new Date(departureDate.getTime() + (route.durationValue * 1000));
+        }
+
+        departureTime = departureDate.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+        arrivalTimeStr = arrivalDate.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      return {
+        totalDuration: Math.round(route.durationValue / 60), // convertește din secunde în minute
+        totalDistance: route.distance || 'N/A',
+        segments: segments,
+        departureTime: departureTime,
+        arrivalTime: arrivalTimeStr,
+        transferCount: route.transferCount || 0,
+        estimatedCrowding: route.estimatedCrowding || 'medium',
+        warnings: route.warnings || [],
+      };
+    });
+  };
+
   const handleOriginSearch = async (query: string) => {
     if (!query.trim() || query.length < 3) {
       setOriginSearchResults([]);
@@ -267,26 +374,46 @@ const CreateJourney = () => {
   const calculateRoute = async (destCoords?: { lat: number; lng: number }) => {
     const targetCoords = destCoords || destinationCoords;
     
-    if (!targetCoords || !arrivalTime || !date) {
+    if (!targetCoords) {
       return;
     }
 
     setIsCalculatingRoute(true);
     
     try {
-      // Convert arrival time to timestamp
-      const arrivalDateTime = new Date(`${date}T${arrivalTime}`);
-      const arrivalTimestamp = Math.floor(arrivalDateTime.getTime() / 1000);
+      // Convert arrival time to timestamp if provided
+      let arrivalTimestamp;
+      if (arrivalTime && date) {
+        const arrivalDateTime = new Date(`${date}T${arrivalTime}`);
+        arrivalTimestamp = Math.floor(arrivalDateTime.getTime() / 1000);
+      }
 
-      const data = await planRouteAction({
+      const data = await calculateTransitRouteAction({
         origin: originCoords,
         destination: targetCoords,
         arrivalTime: arrivalTimestamp,
       });
 
+      if (data.error) {
+        console.error('Route calculation error:', data.error);
+        toast({
+          title: "Eroare la calculare",
+          description: data.error,
+          variant: "destructive",
+        });
+        return;
+      }
+
       if (data.routes && data.routes.length > 0) {
-        setRoutes(data.routes);
-        setSelectedRoute(data.routes[0]); // Auto-select first route
+        // Calculăm timpul de sosire dorit
+        let targetArrivalTime: Date | undefined;
+        if (arrivalTime && date) {
+          targetArrivalTime = new Date(`${date}T${arrivalTime}`);
+        }
+        
+        const transformedRoutes = transformGoogleRoutesToDisplay(data.routes, targetArrivalTime);
+        setRoutes(transformedRoutes);
+        setSelectedRoute(transformedRoutes[0]); // Auto-select first route
         
         toast({
           title: "Rute găsite! 🎉",
@@ -742,27 +869,34 @@ const CreateJourney = () => {
                 id="time"
                 type="time"
                 value={arrivalTime}
-                onChange={(e) => {
-                  setArrivalTime(e.target.value);
-                  // Recalculate route when time changes
-                  if (destinationCoords && date) {
-                    calculateRoute();
-                  }
-                }}
+                onChange={(e) => setArrivalTime(e.target.value)}
                 step="60"
                 lang="ro-RO"
                 className="h-16 glass border-white/20 text-foreground text-3xl font-bold rounded-2xl [&::-webkit-calendar-picker-indicator]:invert-[0.8]"
               />
             </div>
 
-            {/* Calculate Route Button */}
-            {destination && date && arrivalTime && !routes.length && (
+            {/* Recalculate Route Button - shows when time/date changed and we have existing routes */}
+            {destination && destinationCoords && date && arrivalTime && (
               <Button
                 onClick={() => calculateRoute()}
                 disabled={isCalculatingRoute}
-                className="w-full h-14 bg-primary hover:bg-primary/90 rounded-2xl"
+                className="w-full h-14 bg-primary hover:bg-primary/90 rounded-2xl font-semibold"
               >
-                {isCalculatingRoute ? "Se calculează..." : "Calculează ruta"}
+                {isCalculatingRoute ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Se calculează...
+                  </>
+                ) : routes.length > 0 ? (
+                  <>
+                    🔄 Recalculează pentru {arrivalTime}
+                  </>
+                ) : (
+                  <>
+                    🚀 Calculează ruta
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -790,13 +924,32 @@ const CreateJourney = () => {
 
         {/* Route Options */}
         {routes.length > 0 && (
-          <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
-            <RouteDisplay
-              routes={routes}
-              onSelectRoute={handleSelectRoute}
-              onConfirmRoute={handleConfirmRoute}
-              selectedRoute={selectedRoute}
-            />
+          <div className="space-y-4">
+            {/* Info banner about recalculating */}
+            {prefilledData?.calculatedRoutes && (
+              <div className="glass-card p-4 rounded-2xl border border-primary/30 bg-primary/5">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">💡</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground mb-1">
+                      Rute calculate pentru plecare imediată
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Dacă vrei să pleci la o altă oră, modifică timpul și apasă "Recalculează" pentru rute actualizate cu orarele reale ale autobuzelor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="glass-card p-6 rounded-[2rem] space-y-4 shadow-xl">
+              <RouteDisplay
+                routes={routes}
+                onSelectRoute={handleSelectRoute}
+                onConfirmRoute={handleConfirmRoute}
+                selectedRoute={selectedRoute}
+              />
+            </div>
           </div>
         )}
 

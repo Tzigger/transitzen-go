@@ -55,6 +55,8 @@ const MapView = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedDestination, setSelectedDestination] = useState<string>("");
+  const [selectedDestinationCoords, setSelectedDestinationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [calculatedRoutes, setCalculatedRoutes] = useState<any[]>([]);
   const [routeInfo, setRouteInfo] = useState<{ duration: string; distance: string } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -96,6 +98,7 @@ const MapView = () => {
   const handleSelectPlace = (place: any) => {
     setSearchQuery(place.name);
     setSelectedDestination(place.address);
+    setSelectedDestinationCoords(place.location);
     setShowResults(false);
     setSearchResults([]);
     
@@ -118,8 +121,12 @@ const MapView = () => {
       }
 
       if (result.routes && result.routes.length > 0) {
+        // Salvează toate rutele calculate
+        setCalculatedRoutes(result.routes);
+        
         const bestRoute = result.routes[0];
         console.log('✅ Route calculated:', bestRoute);
+        console.log(`📊 Total ${result.routes.length} alternative routes found`);
         
         // Desenează ruta pe hartă
         if (mapRef.current) {
@@ -135,6 +142,23 @@ const MapView = () => {
     } catch (error) {
       console.error('❌ Error calculating route:', error);
     }
+  };
+
+  const handlePlanJourney = () => {
+    if (!selectedDestinationCoords || calculatedRoutes.length === 0) {
+      return;
+    }
+
+    // Navighează către CreateJourney cu datele pre-completate
+    navigate('/create-journey', {
+      state: {
+        prefilledOrigin: 'Locația curentă',
+        prefilledOriginCoords: USER_LOCATION,
+        prefilledDestination: selectedDestination || searchQuery,
+        prefilledDestinationCoords: selectedDestinationCoords,
+        calculatedRoutes: calculatedRoutes, // Transmite toate rutele calculate
+      }
+    });
   };
 
   const handleRouteCalculated = (duration: string, distance: string) => {
@@ -293,15 +317,33 @@ const MapView = () => {
           
           {/* Route Info */}
           {routeInfo && (
-            <div className="px-4 pb-3 flex gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Durată:</span>
-                <span className="font-semibold text-primary">{routeInfo.duration}</span>
+            <div className="px-4 pb-3">
+              <div className="flex gap-4 text-sm mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Durată:</span>
+                  <span className="font-semibold text-primary">{routeInfo.duration}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Distanță:</span>
+                  <span className="font-semibold text-primary">{routeInfo.distance}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Distanță:</span>
-                <span className="font-semibold text-primary">{routeInfo.distance}</span>
-              </div>
+              
+              {/* Plan Journey Button */}
+              {calculatedRoutes.length > 0 && (
+                <Button 
+                  onClick={handlePlanJourney}
+                  className="w-full rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                >
+                  <Navigation className="w-4 h-4 mr-2" />
+                  Planifică călătoria
+                  {calculatedRoutes.length > 1 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {calculatedRoutes.length} rute
+                    </Badge>
+                  )}
+                </Button>
+              )}
             </div>
           )}
         </div>
