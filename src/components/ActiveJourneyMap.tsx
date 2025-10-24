@@ -30,6 +30,8 @@ interface ActiveJourneyMapProps {
   origin: { lat: number; lng: number };
   destination: { lat: number; lng: number };
   routeSegments: RouteSegment[];
+  heading?: number; // User's heading in degrees
+  speed?: number; // User's speed in m/s
 }
 
 const ActiveJourneyMap = ({ 
@@ -37,7 +39,9 @@ const ActiveJourneyMap = ({
   journeySteps, 
   origin,
   destination,
-  routeSegments 
+  routeSegments,
+  heading,
+  speed,
 }: ActiveJourneyMapProps) => {
   const { theme } = useTheme();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -280,7 +284,7 @@ const ActiveJourneyMap = ({
     }).addTo(mapInstanceRef.current);
   }, [theme]);
 
-  // Update current location marker with smooth pulsing animation
+  // Update current location marker with smooth pulsing animation and heading
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current || !currentLocation) return;
 
@@ -292,14 +296,23 @@ const ActiveJourneyMap = ({
       pulsingCircleRef.current.remove();
     }
 
-    // Create custom user location marker - same style as /map
+    // Create custom user location marker with heading indicator
+    const rotation = heading !== undefined ? heading : 0;
+    const isMoving = speed !== undefined && speed > 0.5; // Moving if speed > 0.5 m/s
+
     const userIcon = L.divIcon({
       className: 'custom-user-marker',
       html: `
         <div class="relative">
           <div class="absolute w-10 h-10 rounded-full bg-primary/30 animate-ping"></div>
-          <div class="relative w-10 h-10 rounded-full glass-strong flex items-center justify-center border-4 border-primary shadow-2xl">
-            <div class="w-4 h-4 rounded-full bg-primary"></div>
+          <div class="relative w-10 h-10 rounded-full glass-strong flex items-center justify-center border-4 border-primary shadow-2xl" style="transform: rotate(${rotation}deg)">
+            ${isMoving ? `
+              <svg class="w-6 h-6 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v10.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V4a1 1 0 011-1z" clip-rule="evenodd" />
+              </svg>
+            ` : `
+              <div class="w-4 h-4 rounded-full bg-primary"></div>
+            `}
           </div>
         </div>
       `,
@@ -363,7 +376,7 @@ const ActiveJourneyMap = ({
         pulsingCircleRef.current.remove();
       }
     };
-  }, [currentLocation, isLoaded]);
+  }, [currentLocation, heading, speed, isLoaded]);
 
   return (
     <div className="relative w-full h-full">

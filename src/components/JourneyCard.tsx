@@ -17,22 +17,22 @@ import {
 } from "@/components/ui/dialog";
 
 interface FavoriteRoute {
-  id: string;
-  user_id: string;
+  _id: string;
+  userId: string;
   name: string;
   origin: string;
-  origin_lat: number;
-  origin_lng: number;
+  originLat: number;
+  originLng: number;
   destination: string;
-  destination_lat: number;
-  destination_lng: number;
-  route_info: {
+  destinationLat: number;
+  destinationLng: number;
+  routeInfo?: {
     totalDuration?: number;
     totalDistance?: string;
     segments?: any[];
     averageCrowding?: number;
-  } | null;
-  created_at: string;
+  };
+  _creationTime: number;
 }
 
 interface JourneyCardProps {
@@ -51,9 +51,9 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
   };
 
   const getAverageCrowding = () => {
-    if (!route.route_info?.segments) return 0;
+    if (!route.routeInfo?.segments) return 0;
     
-    const transitSegments = route.route_info.segments.filter(
+    const transitSegments = route.routeInfo.segments.filter(
       (seg: any) => seg.mode === 'TRANSIT' && seg.crowdingLevel
     );
     
@@ -67,8 +67,8 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
     return Math.round(avg);
   };
 
-  const transitSegments = route.route_info?.segments?.filter((seg: any) => seg.mode === 'TRANSIT') || [];
-  const walkingSegments = route.route_info?.segments?.filter((seg: any) => seg.mode === 'WALKING') || [];
+  const transitSegments = route.routeInfo?.segments?.filter((seg: any) => seg.mode === 'TRANSIT') || [];
+  const walkingSegments = route.routeInfo?.segments?.filter((seg: any) => seg.mode === 'WALKING') || [];
   const totalWalkTime = walkingSegments.reduce((sum: number, seg: any) => sum + seg.durationMinutes, 0);
   const crowdingLevel = getAverageCrowding();
 
@@ -102,7 +102,7 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
                   <Route className="w-4 h-4 mr-2" />
                   Vezi detalii
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDelete(route.id)} className="text-destructive">
+                <DropdownMenuItem onClick={() => onDelete(route._id)} className="text-destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Șterge
                 </DropdownMenuItem>
@@ -111,7 +111,7 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
           </div>
 
           {/* Route Statistics */}
-          {route.route_info && (
+          {route.routeInfo && (
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="glass p-4 rounded-2xl">
                 <div className="flex items-center gap-2 mb-1">
@@ -119,7 +119,7 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
                   <p className="text-xs text-muted-foreground">Durată</p>
                 </div>
                 <p className="text-2xl font-bold text-foreground">
-                  {route.route_info.totalDuration || 0} min
+                  {route.routeInfo.totalDuration || 0} min
                 </p>
               </div>
               
@@ -129,7 +129,7 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
                   <p className="text-xs text-muted-foreground">Distanță</p>
                 </div>
                 <p className="text-2xl font-bold text-foreground">
-                  {route.route_info.totalDistance || 'N/A'}
+                  {route.routeInfo.totalDistance || 'N/A'}
                 </p>
               </div>
             </div>
@@ -190,7 +190,7 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
       </div>
 
       {/* Details Dialog */}
-      {route.route_info && (
+      {route.routeInfo && (
         <Dialog open={showDetails} onOpenChange={setShowDetails}>
           <DialogContent className="glass-card max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
@@ -206,20 +206,20 @@ const JourneyCard = ({ route, onPlanJourney, onDelete }: JourneyCardProps) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Durată estimată</p>
-                    <p className="text-lg font-bold text-foreground">{route.route_info.totalDuration} min</p>
+                    <p className="text-lg font-bold text-foreground">{route.routeInfo.totalDuration} min</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Distanță totală</p>
-                    <p className="text-lg font-bold text-foreground">{route.route_info.totalDistance}</p>
+                    <p className="text-lg font-bold text-foreground">{route.routeInfo.totalDistance}</p>
                   </div>
                 </div>
               </div>
 
               {/* Route Segments */}
-              {route.route_info.segments && route.route_info.segments.length > 0 && (
+              {route.routeInfo.segments && route.routeInfo.segments.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-semibold text-foreground">Pașii călătoriei</h4>
-                  {route.route_info.segments.map((segment: any, idx: number) => (
+                  {route.routeInfo.segments.map((segment: any, idx: number) => (
                     <div key={idx} className="glass-card p-4 rounded-xl">
                       {segment.mode === 'TRANSIT' ? (
                         <div className="flex items-start gap-3">

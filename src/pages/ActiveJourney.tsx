@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
 import ActiveJourneyMap from "@/components/ActiveJourneyMap";
+import { gpsTracker, type GPSPosition } from "@/lib/navigation/gps-tracker";
+import { proximityDetector, type ProximityZone, type ProximityAlert } from "@/lib/navigation/proximity-detector";
+import { alertManager } from "@/lib/alerts/alert-manager";
 
 interface JourneyStep {
   type: 'WALKING' | 'TRANSIT';
@@ -45,7 +48,9 @@ const ActiveJourney = () => {
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number>(0);
   const [showStopAlert, setShowStopAlert] = useState(false);
   const [nextStop, setNextStop] = useState<string>("");
-  const watchIdRef = useRef<number | null>(null);
+  const [proximityAlerts, setProximityAlerts] = useState<ProximityAlert[]>([]);
+  const [heading, setHeading] = useState<number | undefined>();
+  const [speed, setSpeed] = useState<number | undefined>();
 
   useEffect(() => {
     if (!journeyData) {
@@ -75,7 +80,7 @@ const ActiveJourney = () => {
     if (segments.length === 0) {
       console.warn('⚠️ No route segments found, creating default walking segment');
       // Create a default walking segment if no segments exist
-      const defaultSegment = {
+      const defaultSegment: JourneyStep = {
         type: 'WALKING',
         from: journeyData.journey.origin || 'Pornire',
         to: journeyData.journey.destination,
@@ -97,7 +102,10 @@ const ActiveJourney = () => {
     
     setEstimatedTimeRemaining(journeyData.journey.estimated_duration || 0);
 
-    // Start location tracking
+    // Initialize proximity zones from segments
+    initializeProximityZones(segments);
+
+    // Start GPS tracking with new tracker
     startTracking();
 
     return () => {
@@ -105,76 +113,108 @@ const ActiveJourney = () => {
     };
   }, []);
 
-  const startTracking = () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: "Eroare",
-        description: "Browser-ul tău nu suportă geolocalizare",
-        variant: "destructive",
-      });
-      return;
+  /**
+   * Initialize proximity zones from journey segments
+   */
+  const initializeProximityZones = (segments: any[]) => {
+    proximityDetector.clearZones();
+
+    segments.forEach((segment, index) => {
+      // Add departure stop as proximity zone
+      if (segment.type === 'TRANSIT' && segment.startLocation) {
+        const zone: ProximityZone = {
+          id: `stop-${index}-departure`,
+          center: {
+            lat: segment.startLocation.lat,
+            lng: segment.startLocation.lng,
+          },
+          radius: 100, // 100m radius
+          type: 'stop',
+          name: segment.from || `Oprirea ${index + 1}`,
+          metadata: { segment, index },
+        };
+        proximityDetector.addZone(zone);
+      }
+
+      // Add arrival stop as proximity zone
+      if (segment.type === 'TRANSIT' && segment.endLocation) {
+        const zone: ProximityZone = {
+          id: `stop-${index}-arrival`,
+          center: {
+            lat: segment.endLocation.lat,
+            lng: segment.endLocation.lng,
+          },
+          radius: 100, // 100m radius
+          type: 'stop',
+          name: segment.to || `Oprirea ${index + 2}`,
+          metadata: { segment, index },
+        };
+        proximityDetector.addZone(zone);
+      }
+    });
+
+    // Add final destination
+    if (journeyData?.journey?.destination_lat && journeyData?.journey?.destination_lng) {
+      const destinationZone: ProximityZone = {
+        id: 'final-destination',
+        center: {
+          lat: journeyData.journey.destination_lat,
+          lng: journeyData.journey.destination_lng,
+        },
+        radius: 50, // 50m radius
+        type: 'destination',
+        name: journeyData.journey.destination,
+        metadata: {},
+      };
+      proximityDetector.addZone(destinationZone);
     }
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const newLocation = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        setCurrentLocation(newLocation);
+    console.log('🎯 Initialized proximity zones:', proximityDetector.getAllZones().length);
+  };
+
+  const startTracking = () => {
+    // Set up proximity alert callback
+    proximityDetector.onProximity((alert) => {
+      console.log('🔔 Proximity alert received:', alert);
+      setProximityAlerts((prev) => [...prev, alert]);
+      
+      // Process alert through alert manager
+      alertManager.processAlert(alert);
+
+      // Show visual alert for stop arrivals
+      if (alert.alertLevel === 'near' || alert.alertLevel === 'arrived') {
+        setShowStopAlert(true);
+        setNextStop(alert.zone.name);
+      }
+    });
+
+    // Start GPS tracking
+    gpsTracker.start(
+      (position: GPSPosition) => {
+        setCurrentLocation({ lat: position.lat, lng: position.lng });
+        setHeading(position.heading);
+        setSpeed(position.speed);
         
-        // Check proximity to next stop
-        checkProximityToStop(newLocation);
+        // Check proximity to zones
+        proximityDetector.checkPosition(position.lat, position.lng);
       },
       (error) => {
-        console.error('Error tracking location:', error);
+        console.error('GPS tracking error:', error);
         toast({
-          title: "Eroare tracking",
-          description: "Nu am putut urmări locația ta",
+          title: "Eroare GPS",
+          description: error.message || "Nu am putut urmări locația ta",
           variant: "destructive",
         });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0,
       }
     );
+
+    console.log('🗺️ GPS tracking started');
   };
 
   const stopTracking = () => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-  };
-
-  const checkProximityToStop = (location: {lat: number, lng: number}) => {
-    if (!steps[currentStepIndex] || steps[currentStepIndex].type !== 'TRANSIT') return;
-
-    const currentStep = steps[currentStepIndex];
-    // In a real app, you would check the actual stop coordinates
-    // For now, we'll simulate based on time/progress
-    
-    // Simulate proximity check - in reality, compare with stop coordinates
-    if (progress > 80 && !showStopAlert) {
-      setShowStopAlert(true);
-      setNextStop(currentStep.to || "");
-      
-      // Show notification
-      toast({
-        title: "🔔 Coboară în curând!",
-        description: `Pregătește-te să cobori la ${currentStep.to}`,
-      });
-
-      // Play notification sound if supported
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Coboară în curând!', {
-          body: `Pregătește-te să cobori la ${currentStep.to}`,
-          icon: '/favicon.ico',
-        });
-      }
-    }
+    gpsTracker.stop();
+    proximityDetector.clearZones();
+    console.log('🗺️ GPS tracking stopped');
   };
 
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
@@ -221,11 +261,18 @@ const ActiveJourney = () => {
 
   const handleEndJourney = () => {
     stopTracking();
+    alertManager.clearAllAlerts();
     toast({
       title: "Călătorie oprită",
       description: "Tracking-ul a fost oprit",
     });
     navigate('/history');
+  };
+
+  const handleDismissAlert = () => {
+    setShowStopAlert(false);
+    // Clear recent proximity alerts
+    setProximityAlerts([]);
   };
 
   const handleEmergency = () => {
@@ -332,6 +379,8 @@ const ActiveJourney = () => {
               lng: journeyData.journey.destination_lng,
             }}
             routeSegments={journeyData.journey.route_details?.segments || []}
+            heading={heading}
+            speed={speed}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-muted/20">
@@ -363,6 +412,44 @@ const ActiveJourney = () => {
             <Progress value={progress} className="h-3 rounded-full" />
           </Card>
 
+          {/* Real-time Navigation Status */}
+          {currentLocation && (
+            <Card className="glass-card p-4 rounded-[2rem] border border-primary/20">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+                  <p className="text-sm font-semibold text-foreground">Navigare activă</p>
+                </div>
+                {heading !== undefined && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Navigation className="w-3 h-3" style={{ transform: `rotate(${heading}deg)` }} />
+                    <span>{Math.round(heading)}°</span>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-xs text-muted-foreground">Acuratețe</p>
+                  <p className="text-sm font-bold text-foreground">
+                    {currentLocation ? '< 50m' : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Viteză</p>
+                  <p className="text-sm font-bold text-foreground">
+                    {speed ? `${(speed * 3.6).toFixed(0)} km/h` : '0 km/h'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Zone Active</p>
+                  <p className="text-sm font-bold text-foreground">
+                    {proximityDetector.getAllZones().length}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Stop Alert */}
           {showStopAlert && (
             <Card className="glass-card p-4 rounded-[2rem] border-2 border-warning bg-warning/10 animate-pulse">
@@ -371,14 +458,29 @@ const ActiveJourney = () => {
                 <div className="flex-1">
                   <p className="font-bold text-foreground">Coboară în curând!</p>
                   <p className="text-sm text-muted-foreground">Următoarea oprire: {nextStop}</p>
+                  {proximityAlerts.length > 0 && proximityAlerts[proximityAlerts.length - 1] && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Distanță: {Math.round(proximityAlerts[proximityAlerts.length - 1].distance)}m
+                    </p>
+                  )}
                 </div>
-                <Button 
-                  size="sm" 
-                  onClick={completeCurrentStep}
-                  className="bg-warning hover:bg-warning/90 text-background rounded-full"
-                >
-                  Am coborât
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={completeCurrentStep}
+                    className="bg-warning hover:bg-warning/90 text-background rounded-full"
+                  >
+                    Am coborât
+                  </Button>
+                  <Button 
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDismissAlert}
+                    className="text-xs"
+                  >
+                    Închide
+                  </Button>
+                </div>
               </div>
             </Card>
           )}

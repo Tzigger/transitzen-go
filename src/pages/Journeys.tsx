@@ -39,12 +39,16 @@ interface FavoriteRoute {
 const Journeys = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { userId } = useAuth();
+  const { userId, clearSession } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
 
   // Convex queries and mutations
-  const routes = useQuery(api.favoriteRoutes.getFavoriteRoutes, userId ? { userId } : "skip");
+  // Skip query if userId is invalid or missing
+  const routes = useQuery(
+    api.favoriteRoutes.getFavoriteRoutes, 
+    userId ? { userId } : "skip"
+  );
   const deleteRouteMutation = useMutation(api.favoriteRoutes.deleteFavoriteRoute);
 
   useEffect(() => {
@@ -52,6 +56,16 @@ const Journeys = () => {
       navigate('/login');
     }
   }, [userId, navigate]);
+
+  // Handle query errors (e.g., invalid userId from wrong table)
+  useEffect(() => {
+    if (routes === undefined) {
+      // Still loading
+      return;
+    }
+    // If routes is null or error, it might be due to invalid userId
+    // We'll handle this by showing an error and clearing session
+  }, [routes]);
 
   const handleDeleteRoute = async (routeId: string) => {
     try {

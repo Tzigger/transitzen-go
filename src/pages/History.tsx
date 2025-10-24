@@ -19,6 +19,7 @@ const History = () => {
   const journeysData = useQuery(api.journeys.getJourneys, userId ? { userId } : "skip");
   const journeys = journeysData || [];
   const deleteJourneyMutation = useMutation(api.journeys.deleteJourney);
+  const updateJourneyStatus = useMutation(api.journeys.updateJourneyStatus);
 
   useEffect(() => {
     if (!userId) {
@@ -68,7 +69,6 @@ const History = () => {
     const startedAt = new Date().toISOString();
 
     try {
-      const updateJourneyStatus = useMutation(api.journeys.updateJourneyStatus);
       await updateJourneyStatus({
         journeyId: journey._id,
         status: 'active',

@@ -8,6 +8,7 @@ import { Capacitor } from "@capacitor/core";
 import { lazy, Suspense } from "react";
 import MobileOnly from "./components/MobileOnly";
 import { ConvexClientProvider } from "./lib/convex";
+import { AuthValidator } from "./components/AuthValidator";
 
 // Lazy load all pages for better performance
 const Welcome = lazy(() => import("./pages/Welcome"));
@@ -43,22 +44,28 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <Router>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<MobileOnly><Welcome /></MobileOnly>} />
-              <Route path="/login" element={<MobileOnly><Login /></MobileOnly>} />
-              <Route path="/signup" element={<MobileOnly><Signup /></MobileOnly>} />
-              <Route path="/dashboard" element={<MobileOnly><Dashboard /></MobileOnly>} />
-              <Route path="/create-journey" element={<MobileOnly><CreateJourney /></MobileOnly>} />
-              <Route path="/map" element={<MobileOnly><MapView /></MobileOnly>} />
-              <Route path="/journeys" element={<MobileOnly><Journeys /></MobileOnly>} />
-              <Route path="/history" element={<MobileOnly><History /></MobileOnly>} />
-              <Route path="/active-journey" element={<MobileOnly><ActiveJourney /></MobileOnly>} />
-              <Route path="/profile" element={<MobileOnly><Profile /></MobileOnly>} />
-              <Route path="*" element={<MobileOnly><NotFound /></MobileOnly>} />
-            </Routes>
-          </Suspense>
+          <Router
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
+            <AuthValidator />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<MobileOnly><Welcome /></MobileOnly>} />
+                <Route path="/login" element={<MobileOnly><Login /></MobileOnly>} />
+                <Route path="/signup" element={<MobileOnly><Signup /></MobileOnly>} />
+                <Route path="/dashboard" element={<MobileOnly><Dashboard /></MobileOnly>} />
+                <Route path="/create-journey" element={<MobileOnly><CreateJourney /></MobileOnly>} />
+                <Route path="/map" element={<MobileOnly><MapView /></MobileOnly>} />
+                <Route path="/journeys" element={<MobileOnly><Journeys /></MobileOnly>} />
+                <Route path="/history" element={<MobileOnly><History /></MobileOnly>} />
+                <Route path="/active-journey" element={<MobileOnly><ActiveJourney /></MobileOnly>} />
+                <Route path="/profile" element={<MobileOnly><Profile /></MobileOnly>} />
+                <Route path="*" element={<MobileOnly><NotFound /></MobileOnly>} />
+              </Routes>
+            </Suspense>
           </Router>
         </TooltipProvider>
       </ThemeProvider>

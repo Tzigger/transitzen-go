@@ -18,9 +18,37 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<Id<"profiles"> | null>(() => {
     const stored = localStorage.getItem("convex_user_id");
+    
+    // Check if the stored ID looks suspicious (contains patterns from wrong tables)
+    // Convex IDs from different tables have different patterns
+    // If we detect an issue, clear the storage and force re-login
+    if (stored) {
+      try {
+        // Basic validation: check if it could be a profiles ID
+        // This is a temporary fix - proper solution is to ensure correct IDs are stored
+        const validIdPattern = /^[a-z0-9]{32}$/;
+        if (!validIdPattern.test(stored)) {
+          console.warn('Invalid userId format detected, clearing session');
+          localStorage.removeItem("convex_user_id");
+          localStorage.removeItem("convex_user_email");
+          return null;
+        }
+      } catch (e) {
+        console.error('Error validating userId:', e);
+        localStorage.removeItem("convex_user_id");
+        localStorage.removeItem("convex_user_email");
+        return null;
+      }
+    }
+    
     return stored as Id<"profiles"> | null;
   });
   const [email, setEmail] = useState<string | null>(() => {
+    // Clear email if userId was cleared
+    if (!userId) {
+      localStorage.removeItem("convex_user_email");
+      return null;
+    }
     return localStorage.getItem("convex_user_email");
   });
 
