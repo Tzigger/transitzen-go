@@ -54,6 +54,8 @@ interface MapProps {
 
 export interface MapRef {
   centerOnUser: () => void;
+  drawJourneyRoute: (routeData: any) => void;
+  clearJourneyRoute: () => void;
 }
 
 const Map = forwardRef<MapRef, MapProps>(({ 
@@ -69,6 +71,7 @@ const Map = forwardRef<MapRef, MapProps>(({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const routeLayer = useRef<L.Polyline | null>(null);
   const vehicleRouteLayer = useRef<L.Polyline | null>(null);
+  const journeyRouteLayers = useRef<L.Layer[]>([]); // Pentru segmentele de călătorie (mers pe jos + transport)
   const vehicleClusterGroup = useRef<L.MarkerClusterGroup | null>(null);
   const vehicleMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
   const stopMarkersRef = useRef<globalThis.Map<string, L.Marker>>(new globalThis.Map());
@@ -137,6 +140,18 @@ const Map = forwardRef<MapRef, MapProps>(({
           duration: 0.5,
         });
       }
+    },
+    drawJourneyRoute: (routeData: any) => {
+      drawJourneyRoute(routeData);
+    },
+    clearJourneyRoute: () => {
+      // Șterge rutele existente
+      journeyRouteLayers.current.forEach(layer => {
+        if (map.current) {
+          map.current.removeLayer(layer);
+        }
+      });
+      journeyRouteLayers.current = [];
     },
   }));
 
@@ -656,6 +671,231 @@ const Map = forwardRef<MapRef, MapProps>(({
     }
   }, []);
 
+  // Funcție pentru desenarea rutei complete cu segmente diferite
+  const drawJourneyRoute = useCallback((routeData: any) => {
+    if (!map.current) return;
+
+    // Șterge rutele existente
+    journeyRouteLayers.current.forEach(layer => {
+      if (map.current) {
+        map.current.removeLayer(layer);
+      }
+    });
+    journeyRouteLayers.current = [];
+
+    if (!routeData || !routeData.legs) return;
+
+    console.log('🗺️ Drawing journey route with', routeData.legs.length, 'legs');
+
+    // Track transfer points (where mode changes)
+    const transferPoints: Array<{ 
+      lat: number; 
+      lng: number; 
+      from: string; 
+      to: string;
+      fromStation?: string;
+      toStation?: string;
+      type: 'transfer' | 'departure';
+      cameFromWalk?: boolean;
+    }> = [];
+
+    // Desenează fiecare segment (leg) al călătoriei
+    routeData.legs.forEach((leg: any, index: number) => {
+      if (!leg.coordinates || leg.coordinates.length < 2) {
+        console.log(`⚠️ Skipping leg ${index} - insufficient coordinates:`, leg.coordinates?.length || 0);
+        return;
+      }
+
+      const coordinates = leg.coordinates.map((coord: any) => [coord.lat, coord.lng]);
+      
+      console.log(`📍 Drawing leg ${index}:`, {
+        mode: leg.mode,
+        points: coordinates.length,
+        from: leg.from || 'N/A',
+        to: leg.to || 'N/A'
+      });
+      
+      // Determină stilul bazat pe tipul de transport
+      let lineStyle: L.PolylineOptions;
+      
+      if (leg.mode === 'WALK') {
+        // Mers pe jos = linie discontinuă
+        lineStyle = {
+          color: '#FF6B6B',
+          weight: 4,
+          opacity: 0.8,
+          dashArray: '10, 10', // Linie discontinuă
+          lineCap: 'round',
+        };
+      } else if (leg.mode === 'TRANSIT') {
+        // Transport public = linie continuă colorată
+        const transitColor = leg.routeColor || '#3B82F6';
+        lineStyle = {
+          color: transitColor,
+          weight: 6,
+          opacity: 0.9,
+          lineCap: 'round',
+        };
+        
+        // Salvează punctul de transfer (stația unde urci în noul vehicul)
+        if (index > 0 && leg.from) {
+          const previousLeg = routeData.legs[index - 1];
+          transferPoints.push({
+            lat: coordinates[0][0],
+            lng: coordinates[0][1],
+            // De unde cobori (doar dacă nu e mers pe jos)
+            from: previousLeg.mode === 'WALK' ? '' : `${previousLeg.routeShortName} (${previousLeg.to})`,
+            // Unde urci (vehicul nou)
+            to: `${leg.routeShortName} (${leg.from})`,
+            // Salvăm și numele stațiilor pentru popup mai clar
+            fromStation: previousLeg.to || '',
+            toStation: leg.from || '',
+            type: 'transfer', // Transfer (cu sau fără coborâre)
+            cameFromWalk: previousLeg.mode === 'WALK' // Flag pentru a ști dacă vii pe jos
+          });
+        }
+        
+        // Adaugă marker când cobori din vehicul (indiferent dacă mergi pe jos sau te oprești)
+        if (leg.to) {
+          const lastCoord = coordinates[coordinates.length - 1];
+          const nextLeg = routeData.legs[index + 1];
+          
+          // Doar dacă următorul leg există și nu e tot TRANSIT (deci fie WALK fie sfârșitul)
+          if (!nextLeg || nextLeg.mode !== 'TRANSIT') {
+            transferPoints.push({
+              lat: lastCoord[0],
+              lng: lastCoord[1],
+              from: `${leg.routeShortName} (${leg.to})`,
+              to: nextLeg?.mode === 'WALK' ? 'Mers pe jos' : '', // Dacă mergi pe jos sau te oprești
+              fromStation: leg.to || '',
+              toStation: '',
+              type: 'departure', // Coborâre din vehicul
+              cameFromWalk: false
+            });
+          }
+        }
+      } else {
+        // Alte moduri (cycling, etc)
+        lineStyle = {
+          color: '#10B981',
+          weight: 4,
+          opacity: 0.8,
+          dashArray: '5, 5',
+          lineCap: 'round',
+        };
+      }
+
+      // Creează polyline
+      const polyline = L.polyline(coordinates, lineStyle);
+      
+      // Adaugă popup cu informații despre segment
+      let popupContent = '';
+      if (leg.mode === 'WALK') {
+        popupContent = `🚶 Mers pe jos<br/>📏 ${leg.distance || 'N/A'}<br/>⏱️ ${leg.duration || 'N/A'}`;
+      } else if (leg.mode === 'TRANSIT') {
+        popupContent = `🚌 ${leg.routeShortName || 'Transport'}<br/>📍 ${leg.from} → ${leg.to}<br/>⏱️ ${leg.duration || 'N/A'}`;
+      }
+      
+      if (popupContent) {
+        polyline.bindPopup(popupContent);
+      }
+
+      // Adaugă pe hartă
+      polyline.addTo(map.current!);
+      journeyRouteLayers.current.push(polyline);
+    });
+
+    // Adaugă markere pentru punctele de transfer și coborâre
+    transferPoints.forEach((point, idx) => {
+      const isDeparture = point.type === 'departure';
+      const cameFromWalk = point.cameFromWalk;
+      
+      // Toate markerele sunt portocalii cu ↔
+      const transferMarker = L.marker([point.lat, point.lng], {
+        icon: L.divIcon({
+          className: 'custom-div-icon',
+          html: `<div style="background: #F59E0B; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                  <span style="color: white; font-size: 14px; font-weight: bold;">↔</span>
+                </div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        }),
+      }).addTo(map.current!);
+      
+      // Popup-uri diferite în funcție de situație
+      let popupContent = '';
+      
+      if (isDeparture) {
+        // Cobori din vehicul și fie mergi pe jos, fie te oprești
+        popupContent = `🚏 <strong>Coborâre</strong><br/>` +
+          `📍 Stație: ${point.fromStation}<br/>` +
+          `🚌 Coborî din: ${point.from}`;
+        
+        if (point.to) {
+          popupContent += `<br/>🚶 Apoi: ${point.to}`;
+        }
+      } else if (cameFromWalk) {
+        // Urci în vehicul după mers pe jos - NU arăta "Coborî din"
+        popupContent = `🚏 <strong>Urcare</strong><br/>` +
+          `📍 Stație: ${point.toStation || point.fromStation}<br/>` +
+          `🚌 Urci în: ${point.to}`;
+      } else {
+        // Transfer clasic: cobori dintr-un vehicul și urci în altul
+        popupContent = `🔄 <strong>Transfer</strong><br/>` +
+          `📍 Stație: ${point.fromStation || point.toStation}<br/>` +
+          `🚌 Coborî din: ${point.from}<br/>` +
+          `🚌 Urci în: ${point.to}`;
+      }
+      
+      transferMarker.bindPopup(popupContent);
+      journeyRouteLayers.current.push(transferMarker);
+    });
+
+    // Adaugă markere pentru start și destinație
+    if (routeData.start) {
+      const startMarker = L.marker([routeData.start.lat, routeData.start.lng], {
+        icon: L.divIcon({
+          className: 'custom-div-icon',
+          html: `<div style="background: #10B981; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                  <span style="color: white; font-size: 18px;">📍</span>
+                </div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
+        }),
+      }).addTo(map.current);
+      
+      startMarker.bindPopup('🟢 Pornire');
+      journeyRouteLayers.current.push(startMarker);
+    }
+
+    if (routeData.end) {
+      const endMarker = L.marker([routeData.end.lat, routeData.end.lng], {
+        icon: L.divIcon({
+          className: 'custom-div-icon',
+          html: `<div style="background: #EF4444; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                  <span style="color: white; font-size: 18px;">🎯</span>
+                </div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
+        }),
+      }).addTo(map.current);
+      
+      endMarker.bindPopup('🔴 Destinație');
+      journeyRouteLayers.current.push(endMarker);
+    }
+
+    // Ajustează harta pentru a arăta întreaga rută
+    if (journeyRouteLayers.current.length > 0) {
+      const group = L.featureGroup(journeyRouteLayers.current);
+      map.current.fitBounds(group.getBounds(), {
+        padding: [50, 50],
+        maxZoom: 15,
+      });
+    }
+
+    console.log('✅ Journey route drawn successfully');
+  }, []);
+
   // Optimized marker update with viewport filtering
   const updateMarkers = useCallback((immediate: boolean = false) => {
     if (!map.current || !transitData) return;
@@ -991,7 +1231,9 @@ const Map = forwardRef<MapRef, MapProps>(({
   // Filters change already triggers viewport requery automatically via Convex reactivity
   // No need for manual fetch - viewport bounds query will auto-update
 
-  // Calculate route using Google Maps API when destination changes
+  // OLD ROUTE CALCULATION - DEPRECATED
+  // Route calculation is now handled in MapView.tsx using calculateTransitRoute action
+  // This effect only handles cleanup
   useEffect(() => {
     if (!map.current || !destination) {
       // Remove existing route if no destination
@@ -1002,72 +1244,9 @@ const Map = forwardRef<MapRef, MapProps>(({
       return;
     }
 
-    const calculateRoute = async () => {
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const response = await fetch(`${supabaseUrl}/functions/v1/calculate-route`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            origin: center,
-            destination: destination,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to calculate route');
-        }
-
-        const data = await response.json();
-
-        if (data.route && data.route.length > 0) {
-          // Remove existing route
-          if (routeLayer.current) {
-            map.current?.removeLayer(routeLayer.current);
-          }
-
-          // Draw new route on Leaflet map
-          routeLayer.current = L.polyline(data.route, {
-            color: '#8B5CF6',
-            weight: 5,
-            opacity: 0.8,
-          }).addTo(map.current!);
-
-          // Fit map to route bounds
-          map.current?.fitBounds(routeLayer.current.getBounds(), {
-            padding: [50, 50],
-          });
-
-          // Add destination marker
-          const destIcon = L.divIcon({
-            className: 'custom-dest-marker',
-            html: `
-              <div class="relative">
-                <div class="w-10 h-10 rounded-full glass-card border-2 border-primary flex items-center justify-center">
-                  <span class="text-xl">📍</span>
-                </div>
-              </div>
-            `,
-            iconSize: [40, 40],
-            iconAnchor: [20, 40],
-          });
-
-          L.marker(data.route[data.route.length - 1], { icon: destIcon }).addTo(map.current!);
-
-          // Call callback with route info
-          if (onRouteCalculated && data.duration && data.distance) {
-            onRouteCalculated(data.duration, data.distance);
-          }
-        }
-      } catch (error) {
-        console.error('Error calculating route:', error);
-      }
-    };
-
-    calculateRoute();
-  }, [destination, center, onRouteCalculated]);
+    // Route drawing is now handled by drawJourneyRoute() called from MapView
+    console.log('⚠️ Deprecated route calculation effect - use drawJourneyRoute() instead');
+  }, [destination, center]);
 
   return (
     <>

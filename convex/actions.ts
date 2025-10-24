@@ -108,6 +108,161 @@ export const searchPlaces = action({
   },
 });
 
+// Calculate transit route with walking and public transport segments
+export const calculateTransitRoute = action({
+  args: {
+    origin: v.object({
+      lat: v.number(),
+      lng: v.number(),
+    }),
+    destination: v.object({
+      lat: v.number(),
+      lng: v.number(),
+    }),
+    arrivalTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+      
+      if (!GOOGLE_MAPS_API_KEY) {
+        console.error('Google Maps API key not configured');
+        return { error: 'API key not configured' };
+      }
+
+      // Use Google Directions API with transit mode
+      const directionsUrl = new URL('https://maps.googleapis.com/maps/api/directions/json');
+      directionsUrl.searchParams.append('origin', `${args.origin.lat},${args.origin.lng}`);
+      directionsUrl.searchParams.append('destination', `${args.destination.lat},${args.destination.lng}`);
+      directionsUrl.searchParams.append('mode', 'transit');
+      directionsUrl.searchParams.append('transit_mode', 'bus|tram');
+      directionsUrl.searchParams.append('alternatives', 'true');
+      directionsUrl.searchParams.append('region', 'ro');
+      directionsUrl.searchParams.append('language', 'ro');
+      directionsUrl.searchParams.append('key', GOOGLE_MAPS_API_KEY);
+
+      if (args.arrivalTime) {
+        directionsUrl.searchParams.append('arrival_time', args.arrivalTime.toString());
+      } else {
+        directionsUrl.searchParams.append('departure_time', 'now');
+      }
+
+      const response = await fetch(directionsUrl.toString());
+      const data = await response.json();
+
+      if (data.status !== 'OK') {
+        console.error('Google Directions API error:', data);
+        return { error: `Failed to calculate route: ${data.status}` };
+      }
+
+      // Parse and format routes
+      const routes = data.routes.map((route: any) => {
+        const legs: any[] = [];
+        
+        // Process each leg of the route
+        route.legs.forEach((leg: any) => {
+          leg.steps.forEach((step: any, stepIndex: number) => {
+            let coordinates: Array<{ lat: number; lng: number }> = [];
+            
+            // Try to get coordinates from polyline
+            if (step.polyline?.points) {
+              coordinates = decodePolyline(step.polyline.points);
+            } else {
+              // Fallback: use start and end location if no polyline
+              console.log('⚠️ Step without polyline, using start/end locations');
+              if (step.start_location && step.end_location) {
+                coordinates = [
+                  { lat: step.start_location.lat, lng: step.start_location.lng },
+                  { lat: step.end_location.lat, lng: step.end_location.lng },
+                ];
+              }
+            }
+
+            // Skip if no coordinates
+            if (coordinates.length === 0) {
+              console.log('⚠️ Skipping step with no coordinates:', stepIndex);
+              return;
+            }
+
+            const legData: any = {
+              mode: step.travel_mode === 'WALKING' ? 'WALK' : 'TRANSIT',
+              distance: step.distance?.text || '',
+              duration: step.duration?.text || '',
+              coordinates: coordinates,
+              startLocation: step.start_location,
+              endLocation: step.end_location,
+            };
+
+            if (step.travel_mode === 'TRANSIT' && step.transit_details) {
+              const transit = step.transit_details;
+              legData.routeShortName = transit.line?.short_name || transit.line?.name || '';
+              legData.routeColor = transit.line?.color ? `#${transit.line.color}` : '#3B82F6';
+              legData.from = transit.departure_stop?.name || '';
+              legData.to = transit.arrival_stop?.name || '';
+              legData.vehicleType = transit.line?.vehicle?.type || 'BUS';
+            }
+
+            legs.push(legData);
+          });
+        });
+
+        console.log(`✅ Processed route with ${legs.length} legs, total coordinates:`, 
+          legs.reduce((sum, leg) => sum + (leg.coordinates?.length || 0), 0));
+
+        return {
+          legs: legs,
+          duration: route.legs[0]?.duration?.text || '',
+          distance: route.legs[0]?.distance?.text || '',
+          start: args.origin,
+          end: args.destination,
+          summary: route.summary || '',
+        };
+      });
+
+      return { routes: routes };
+    } catch (error) {
+      console.error('Error calculating transit route:', error);
+      return { error: 'Internal server error' };
+    }
+  },
+});
+
+// Helper function to decode Google's polyline encoding
+function decodePolyline(encoded: string): Array<{ lat: number; lng: number }> {
+  const poly: Array<{ lat: number; lng: number }> = [];
+  let index = 0;
+  const len = encoded.length;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < len) {
+    let b;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    poly.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+
+  return poly;
+}
+
 // Plan a route (simplified version - you may want to integrate with a real transit API)
 export const planRoute = action({
   args: {

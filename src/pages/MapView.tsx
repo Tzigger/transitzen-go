@@ -41,6 +41,7 @@ const MapView = () => {
   const navigate = useNavigate();
   const mapRef = useRef<MapRef>(null);
   const searchPlacesAction = useAction(api.actions.searchPlaces);
+  const calculateRouteAction = useAction(api.actions.calculateTransitRoute);
   
   // Use optimized query to get transit data for nearby vehicles (filtered by location)
   const transitData = useQuery(api.transit.getTransitDataForNearbyVehicles, {
@@ -97,6 +98,43 @@ const MapView = () => {
     setSelectedDestination(place.address);
     setShowResults(false);
     setSearchResults([]);
+    
+    // Calculează ruta către destinație
+    calculateAndDisplayRoute(place.location);
+  };
+
+  const calculateAndDisplayRoute = async (destination: { lat: number; lng: number }) => {
+    try {
+      console.log('🗺️ Calculating route to:', destination);
+      
+      const result = await calculateRouteAction({
+        origin: USER_LOCATION,
+        destination: destination,
+      });
+
+      if (result.error) {
+        console.error('❌ Route calculation error:', result.error);
+        return;
+      }
+
+      if (result.routes && result.routes.length > 0) {
+        const bestRoute = result.routes[0];
+        console.log('✅ Route calculated:', bestRoute);
+        
+        // Desenează ruta pe hartă
+        if (mapRef.current) {
+          mapRef.current.drawJourneyRoute(bestRoute);
+        }
+
+        // Actualizează informațiile despre rută
+        setRouteInfo({
+          duration: bestRoute.duration || 'N/A',
+          distance: bestRoute.distance || 'N/A',
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error calculating route:', error);
+    }
   };
 
   const handleRouteCalculated = (duration: string, distance: string) => {
@@ -243,6 +281,10 @@ const MapView = () => {
                 setSelectedDestination("");
                 setShowResults(false);
                 setRouteInfo(null);
+                // Șterge ruta de pe hartă
+                if (mapRef.current) {
+                  mapRef.current.clearJourneyRoute();
+                }
               }}
             >
               <Search className="w-5 h-5" />
