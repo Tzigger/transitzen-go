@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.georgecatanescu.transitzen.app",
-  appName: "Transitzen",
+  appName: "ZeroWait",
   webDir: "dist",
   bundledWebRuntime: false,
   server: {
