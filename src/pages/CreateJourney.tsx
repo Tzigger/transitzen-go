@@ -39,7 +39,10 @@ const CreateJourney = () => {
   
   const [origin, setOrigin] = useState(prefilledData?.prefilledOrigin || "");
   const [originCoords, setOriginCoords] = useState(prefilledData?.prefilledOriginCoords || USER_LOCATION);
-  const [useCurrentLocation, setUseCurrentLocation] = useState(!prefilledData?.prefilledOrigin);
+  // Dacă origin este "Locația curentă" sau nu există prefilledOrigin, activează toggle-ul
+  const [useCurrentLocation, setUseCurrentLocation] = useState(
+    !prefilledData?.prefilledOrigin || prefilledData?.prefilledOrigin === "Locația curentă"
+  );
   const [currentLocationName, setCurrentLocationName] = useState<string>("Detectare locație...");
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [destination, setDestination] = useState(prefilledData?.prefilledDestination || "");
@@ -117,6 +120,15 @@ const CreateJourney = () => {
   // Get user's current location
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
+      // În development, folosește locație mock
+      if (import.meta.env.DEV || window.location.hostname === 'localhost') {
+        console.warn('🗺️ Geolocation not supported - using mock location');
+        setOriginCoords(USER_LOCATION);
+        setCurrentLocationName("TehnoPolIS, Iași (Mock)");
+        setIsLoadingLocation(false);
+        return;
+      }
+      
       toast({
         title: "Eroare",
         description: "Browser-ul tău nu suportă geolocalizare",
@@ -167,6 +179,19 @@ const CreateJourney = () => {
       },
       (error) => {
         setIsLoadingLocation(false);
+        
+        // În development, folosește locație mock în loc de eroare
+        if (import.meta.env.DEV || window.location.hostname === 'localhost') {
+          console.warn('🗺️ GPS error in development - using mock location');
+          setOriginCoords(USER_LOCATION);
+          setCurrentLocationName("TehnoPolIS, Iași (Mock)");
+          toast({
+            title: "⚠️ Mod Development",
+            description: "Folosim o locație mock pentru testare",
+          });
+          return;
+        }
+        
         setCurrentLocationName("Nu s-a putut detecta");
         
         let errorMessage = "Nu am putut accesa locația ta";
@@ -195,7 +220,9 @@ const CreateJourney = () => {
 
   // Get location when toggle is enabled
   useEffect(() => {
-    if (useCurrentLocation && !prefilledData?.prefilledOrigin) {
+    if (useCurrentLocation) {
+      // Întotdeauna apelăm getCurrentLocation când toggle-ul e activat
+      // indiferent dacă avem sau nu prefilledOrigin
       getCurrentLocation();
     }
   }, [useCurrentLocation]);

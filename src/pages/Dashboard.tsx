@@ -15,6 +15,7 @@ const Dashboard = () => {
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? "Bună dimineața" : currentHour < 18 ? "Bună ziua" : "Bună seara";
   const [userName, setUserName] = useState<string>("");
+  const [activeJourney, setActiveJourney] = useState<any>(null);
 
   // Convex queries
   const profile = useQuery(api.profiles.getProfile, userId ? { userId } : "skip");
@@ -33,6 +34,27 @@ const Dashboard = () => {
       setUserName(email.split('@')[0] || 'Utilizator');
     }
   }, [profile, email]);
+
+  // Check for active journey in localStorage
+  useEffect(() => {
+    const storedJourney = localStorage.getItem('activeJourney');
+    if (storedJourney) {
+      try {
+        const journey = JSON.parse(storedJourney);
+        // Check if journey is still valid (not older than 24h)
+        const journeyAge = Date.now() - (journey.startedAt || 0);
+        if (journeyAge < 24 * 60 * 60 * 1000) {
+          setActiveJourney(journey);
+        } else {
+          // Clear old journey
+          localStorage.removeItem('activeJourney');
+        }
+      } catch (error) {
+        console.error('Error parsing active journey:', error);
+        localStorage.removeItem('activeJourney');
+      }
+    }
+  }, []);
 
   const tips = [
     { icon: Zap, title: "Pleacă cu 5 min mai devreme", desc: "Evită stresul de a prinde autobuzul" },
@@ -58,6 +80,61 @@ const Dashboard = () => {
 
         {/* Ticket Selector */}
         <TicketSelector />
+
+        {/* Active Journey Card */}
+        {activeJourney && (
+          <div 
+            onClick={() => navigate('/active-journey', { state: { journey: activeJourney } })}
+            className="glass-card p-6 rounded-[2rem] shadow-xl border-2 border-primary/30 cursor-pointer hover-lift animate-pulse-subtle"
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center animate-pulse">
+                  <Navigation className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground text-lg">Călătorie activă</h3>
+                  <p className="text-sm text-muted-foreground">Atingi pentru a continua</p>
+                </div>
+              </div>
+              <Badge variant="default" className="bg-primary">
+                Live
+              </Badge>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📍</span>
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Destinație</p>
+                  <p className="font-semibold text-foreground">{activeJourney.destination}</p>
+                </div>
+              </div>
+              
+              {activeJourney.progress !== undefined && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Progres</span>
+                    <span>{Math.round(activeJourney.progress)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-secondary/20 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300 rounded-full"
+                      style={{ width: `${activeJourney.progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                Început la {new Date(activeJourney.startedAt).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <ChevronRight className="w-5 h-5 text-primary" />
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-3">

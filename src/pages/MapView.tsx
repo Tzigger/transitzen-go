@@ -43,10 +43,13 @@ const MapView = () => {
   const searchPlacesAction = useAction(api.actions.searchPlaces);
   const calculateRouteAction = useAction(api.actions.calculateTransitRoute);
   
+  // State for user's current location
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(USER_LOCATION);
+  
   // Use optimized query to get transit data for nearby vehicles (filtered by location)
   const transitData = useQuery(api.transit.getTransitDataForNearbyVehicles, {
-    userLat: USER_LOCATION.lat,
-    userLng: USER_LOCATION.lng,
+    userLat: userLocation.lat,
+    userLng: userLocation.lng,
     radiusKm: 1, // 1km radius
   });
   
@@ -61,6 +64,37 @@ const MapView = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [nearbyVehicles, setNearbyVehicles] = useState<any[]>([]);
+
+  // Get user's current location on mount
+  useEffect(() => {
+    const getCurrentLocation = () => {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const newLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            };
+            console.log('📍 User location obtained:', newLocation);
+            setUserLocation(newLocation);
+          },
+          (error) => {
+            console.warn('⚠️ Could not get user location, using default:', error);
+            // Keep using USER_LOCATION as fallback (already set in state)
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0,
+          }
+        );
+      } else {
+        console.warn('⚠️ Geolocation not available, using default location');
+      }
+    };
+
+    getCurrentLocation();
+  }, []);
 
   const toggleVehicleType = (id: string) => {
     setSelectedVehicles(prev => {
@@ -83,7 +117,7 @@ const MapView = () => {
     try {
       const data = await searchPlacesAction({
         query,
-        location: USER_LOCATION,
+        location: userLocation,
       });
 
       setSearchResults(data.results || []);
@@ -108,10 +142,11 @@ const MapView = () => {
 
   const calculateAndDisplayRoute = async (destination: { lat: number; lng: number }) => {
     try {
-      console.log('🗺️ Calculating route to:', destination);
+      console.log('🗺️ Calculating route from current location to:', destination);
+      console.log('📍 Origin (user location):', userLocation);
       
       const result = await calculateRouteAction({
-        origin: USER_LOCATION,
+        origin: userLocation,
         destination: destination,
       });
 
@@ -153,7 +188,7 @@ const MapView = () => {
     navigate('/create-journey', {
       state: {
         prefilledOrigin: 'Locația curentă',
-        prefilledOriginCoords: USER_LOCATION,
+        prefilledOriginCoords: userLocation,
         prefilledDestination: selectedDestination || searchQuery,
         prefilledDestinationCoords: selectedDestinationCoords,
         calculatedRoutes: calculatedRoutes, // Transmite toate rutele calculate
@@ -179,8 +214,8 @@ const MapView = () => {
 
         // Calculate distance
         const distance = calculateDistance(
-          USER_LOCATION.lat,
-          USER_LOCATION.lng,
+          userLocation.lat,
+          userLocation.lng,
           vehicle.latitude,
           vehicle.longitude
         );
@@ -190,8 +225,8 @@ const MapView = () => {
       })
       .map((vehicle: any) => {
         const distance = calculateDistance(
-          USER_LOCATION.lat,
-          USER_LOCATION.lng,
+          userLocation.lat,
+          userLocation.lng,
           vehicle.latitude,
           vehicle.longitude
         );
@@ -234,7 +269,7 @@ const MapView = () => {
       .slice(0, 20); // Limit to 20 nearest vehicles
 
     setNearbyVehicles(processedVehicles);
-  }, [transitData]);
+  }, [transitData, userLocation]);
 
   return (
     <div className="min-h-screen bg-background pb-24 relative">
@@ -353,7 +388,7 @@ const MapView = () => {
       <div className="absolute inset-0 pt-24 pb-28">
         <Map 
           ref={mapRef}
-          center={USER_LOCATION} 
+          center={userLocation} 
           zoom={13} 
           destination={selectedDestination}
           onRouteCalculated={handleRouteCalculated}

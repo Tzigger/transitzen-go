@@ -14,6 +14,7 @@ const History = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { userId } = useAuth();
+  const [activeJourneyId, setActiveJourneyId] = useState<string | null>(null);
 
   // Convex queries and mutations
   const journeysData = useQuery(api.journeys.getJourneys, userId ? { userId } : "skip");
@@ -26,6 +27,26 @@ const History = () => {
       navigate('/login');
     }
   }, [userId, navigate]);
+
+  // Check for active journey in localStorage
+  useEffect(() => {
+    const storedJourney = localStorage.getItem('activeJourney');
+    if (storedJourney) {
+      try {
+        const journey = JSON.parse(storedJourney);
+        // Check if journey is still valid (not older than 24h)
+        const journeyAge = Date.now() - (journey.startedAt || 0);
+        if (journeyAge < 24 * 60 * 60 * 1000) {
+          setActiveJourneyId(journey._id);
+        } else {
+          localStorage.removeItem('activeJourney');
+        }
+      } catch (error) {
+        console.error('Error parsing active journey:', error);
+        localStorage.removeItem('activeJourney');
+      }
+    }
+  }, []);
 
   const deleteJourney = async (id: Id<"journeys">) => {
     try {
@@ -199,12 +220,18 @@ const History = () => {
               return (
                 <div 
                   key={journey._id}
-                  className="glass-card p-5 rounded-[2rem] hover-lift relative overflow-hidden group shadow-xl"
+                  className={`glass-card p-5 rounded-[2rem] hover-lift relative overflow-hidden group shadow-xl ${
+                    activeJourneyId === journey._id ? 'ring-2 ring-success ring-opacity-50' : ''
+                  }`}
                 >
                   {/* Background gradient accent */}
                   <div className={`absolute inset-0 bg-gradient-to-br ${
-                    upcoming ? 'from-primary/5' : 'from-success/5'
-                  } to-transparent opacity-0 group-hover:opacity-100 transition-opacity`} />
+                    activeJourneyId === journey._id 
+                      ? 'from-success/10 to-transparent opacity-100' 
+                      : upcoming 
+                      ? 'from-primary/5' 
+                      : 'from-success/5'
+                  } to-transparent ${activeJourneyId === journey._id ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
                   
                   <div className="relative">
                     {/* Header */}
@@ -276,7 +303,7 @@ const History = () => {
                         <p className="text-xs text-muted-foreground mb-2">
                           Ruta ({journey.estimatedDuration} min • {journey.routeDetails.totalDistance})
                         </p>
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap relative">
                           {journey.routeDetails.segments
                             .filter(seg => seg.mode === 'TRANSIT' && seg.vehicle)
                             .map((segment, idx) => (
@@ -295,16 +322,44 @@ const History = () => {
                                 )}
                               </div>
                             ))}
+                          
+                          {/* LIVE Badge - Aligned with vehicle badges */}
+                          {activeJourneyId === journey._id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartJourney(journey);
+                              }}
+                              className="ml-auto cursor-pointer hover:scale-110 transition-transform"
+                            >
+                              <Badge className="bg-success text-success-foreground animate-pulse hover:animate-none shadow-lg px-3 py-1.5">
+                                🔴 LIVE
+                              </Badge>
+                            </button>
+                          )}
                         </div>
 
                         {/* Start Journey Button - Only for upcoming journeys */}
                         {journey.status === 'scheduled' && upcoming && (
                           <Button 
                             onClick={() => handleStartJourney(journey)}
-                            className="w-full gradient-primary h-12 text-sm font-semibold rounded-full shadow-lg hover:shadow-xl transition-all group"
+                            className={`w-full h-12 text-sm font-semibold rounded-full shadow-lg hover:shadow-xl transition-all group ${
+                              activeJourneyId === journey._id 
+                                ? 'bg-success hover:bg-success/90 animate-pulse-subtle border-2 border-success/30' 
+                                : 'gradient-primary'
+                            }`}
                           >
-                            <Play className="w-4 h-4 mr-2 group-hover:animate-pulse" />
-                            Pornește călătoria
+                            {activeJourneyId === journey._id ? (
+                              <>
+                                <Navigation className="w-4 h-4 mr-2 group-hover:animate-bounce" />
+                                Intră în Live View
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 mr-2 group-hover:animate-pulse" />
+                                Pornește călătoria
+                              </>
+                            )}
                           </Button>
                         )}
                       </div>

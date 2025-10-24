@@ -321,8 +321,32 @@ export class GPSTracker {
    * Handle geolocation errors
    */
   private handleError(error: GeolocationPositionError): void {
-    console.error('🗺️ GPS error:', error.message);
+    console.error('🗺️ GPS error:', error.message, 'Code:', error.code);
 
+    // În development, oferă locație mock pentru testing
+    if (import.meta.env.DEV || window.location.hostname === 'localhost') {
+      console.warn('🗺️ GPS unavailable - using mock location for development');
+      
+      // Folosește o locație mock în Iași (centru oraș)
+      const mockPosition: GPSPosition = {
+        lat: 47.1585,
+        lng: 27.6014,
+        accuracy: 10,
+        heading: 0,
+        speed: 0,
+        timestamp: Date.now(),
+      };
+
+      // Apelează callback-ul cu locația mock
+      if (this.callback) {
+        this.callback(mockPosition);
+      }
+
+      // Nu apela errorCallback în development - tratăm ca succes
+      return;
+    }
+
+    // În production, trimite eroarea
     if (this.errorCallback) {
       this.errorCallback(error);
     }

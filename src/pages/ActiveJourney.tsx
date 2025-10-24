@@ -54,6 +54,24 @@ const ActiveJourney = () => {
 
   useEffect(() => {
     if (!journeyData) {
+      // Try to load from localStorage if no state provided
+      const storedJourney = localStorage.getItem('activeJourney');
+      if (storedJourney) {
+        try {
+          const journey = JSON.parse(storedJourney);
+          console.log('✅ Restored journey from localStorage:', journey);
+          // Re-navigate with the stored data
+          navigate('/active-journey', { 
+            state: { journey: journey },
+            replace: true 
+          });
+          return;
+        } catch (error) {
+          console.error('Error parsing stored journey:', error);
+          localStorage.removeItem('activeJourney');
+        }
+      }
+      
       console.error('❌ No journey data provided to ActiveJourney');
       toast({
         title: "Eroare",
@@ -63,6 +81,14 @@ const ActiveJourney = () => {
       navigate('/history');
       return;
     }
+
+    // Save journey to localStorage
+    const journeyToSave = {
+      ...journeyData.journey,
+      startedAt: Date.now(),
+      progress: 0,
+    };
+    localStorage.setItem('activeJourney', JSON.stringify(journeyToSave));
 
     console.log('✅ ActiveJourney initialized with data:', {
       destination: journeyData.journey.destination,
@@ -200,9 +226,26 @@ const ActiveJourney = () => {
       },
       (error) => {
         console.error('GPS tracking error:', error);
+        
+        // În development, nu arăta erori GPS (folosește mock location)
+        if (import.meta.env.DEV || window.location.hostname === 'localhost') {
+          console.warn('🗺️ GPS error ignored in development - using mock location');
+          return;
+        }
+        
+        // În production, arată eroare utilizatorului
+        let errorMessage = "Nu am putut urmări locația ta";
+        if (error.code === 1) {
+          errorMessage = "Permite accesul la locație în setările browser-ului";
+        } else if (error.code === 2) {
+          errorMessage = "Serviciile de localizare sunt indisponibile";
+        } else if (error.code === 3) {
+          errorMessage = "Timeout la obținerea locației";
+        }
+        
         toast({
           title: "Eroare GPS",
-          description: error.message || "Nu am putut urmări locația ta",
+          description: errorMessage,
           variant: "destructive",
         });
       }
@@ -243,6 +286,7 @@ const ActiveJourney = () => {
       setShowStopAlert(false);
     } else {
       // Journey completed
+      localStorage.removeItem('activeJourney');
       toast({
         title: "🎉 Călătorie completată!",
         description: "Ai ajuns la destinație",
@@ -257,11 +301,25 @@ const ActiveJourney = () => {
     const completedSteps = newSteps.filter(s => s.completed).length;
     const newProgress = (completedSteps / newSteps.length) * 100;
     setProgress(newProgress);
+    
+    // Update localStorage with new progress
+    const storedJourney = localStorage.getItem('activeJourney');
+    if (storedJourney) {
+      try {
+        const journey = JSON.parse(storedJourney);
+        journey.progress = newProgress;
+        localStorage.setItem('activeJourney', JSON.stringify(journey));
+      } catch (error) {
+        console.error('Error updating journey progress:', error);
+      }
+    }
   };
 
   const handleEndJourney = () => {
     stopTracking();
     alertManager.clearAllAlerts();
+    // Clear active journey from localStorage
+    localStorage.removeItem('activeJourney');
     toast({
       title: "Călătorie oprită",
       description: "Tracking-ul a fost oprit",
