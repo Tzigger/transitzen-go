@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "http",
     iosScheme: "http",
-    hostname: "localhost",
+    hostname: "100.114.211.3",
     cleartext: true,
     allowNavigation: ["*"],
   },
