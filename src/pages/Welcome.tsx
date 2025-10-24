@@ -16,8 +16,12 @@ const Welcome = () => {
       <div className="relative z-10 max-w-md w-full space-y-8 animate-fade-in">
         {/* Logo */}
         <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl glass-strong mb-4 animate-glow">
-            <Zap className="w-12 h-12 text-primary" />
+          <div className="flex justify-center">
+            <img 
+              src="/ICON_APP.png" 
+              alt="ZeroWait" 
+              className="w-24 h-24 object-cover rounded-3xl mb-4 animate-glow"
+            />
           </div>
           <h1 className="text-5xl font-bold text-foreground text-glow">
             ZeroWait
