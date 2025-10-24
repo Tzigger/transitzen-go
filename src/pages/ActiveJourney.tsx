@@ -10,6 +10,8 @@ import ActiveJourneyMap from "@/components/ActiveJourneyMap";
 import { gpsTracker, type GPSPosition } from "@/lib/navigation/gps-tracker";
 import { proximityDetector, type ProximityZone, type ProximityAlert } from "@/lib/navigation/proximity-detector";
 import { alertManager } from "@/lib/alerts/alert-manager";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 interface JourneyStep {
   type: 'WALKING' | 'TRANSIT';
@@ -35,6 +37,7 @@ const ActiveJourney = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const updateJourneyStatus = useMutation(api.journeys.updateJourneyStatus);
   
   const journeyData = location.state as {
     journey: any;
@@ -369,7 +372,7 @@ const ActiveJourney = () => {
     return R * c; // Distance in meters
   };
 
-  const completeCurrentStep = () => {
+  const completeCurrentStep = async () => {
     const newSteps = [...steps];
     newSteps[currentStepIndex].completed = true;
     newSteps[currentStepIndex].isActive = false;
@@ -379,7 +382,21 @@ const ActiveJourney = () => {
       setCurrentStepIndex(currentStepIndex + 1);
       setShowStopAlert(false);
     } else {
-      // Journey completed
+      // Journey completed - update backend
+      if (journeyData?.journey?._id) {
+        try {
+          console.log(`🏁 Marking journey ${journeyData.journey._id} as completed`);
+          await updateJourneyStatus({
+            journeyId: journeyData.journey._id,
+            status: 'completed',
+            isActive: false,
+          });
+          console.log('✅ Journey status updated to completed in backend');
+        } catch (error) {
+          console.error('❌ Error updating journey status:', error);
+        }
+      }
+      
       localStorage.removeItem('activeJourney');
       toast({
         title: "🎉 Călătorie completată!",

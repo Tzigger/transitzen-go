@@ -167,6 +167,20 @@ const History = () => {
     // Check if journey arrival time has passed
     const isFinished = !isUpcoming(journey.arrivalDate, journey.arrivalTime);
     
+    // Debug log
+    const arrivalDateTime = new Date(`${journey.arrivalDate}T${journey.arrivalTime}`);
+    const now = new Date();
+    console.log('📊 Status check:', {
+      journeyId: journey._id,
+      destination: journey.destination,
+      arrivalDate: journey.arrivalDate,
+      arrivalTime: journey.arrivalTime,
+      arrivalDateTime: arrivalDateTime.toISOString(),
+      now: now.toISOString(),
+      isFinished,
+      currentStatus: journey.status,
+    });
+    
     // If journey is marked as active but arrival time has passed, it should be completed
     if (journey.status === "active" && isFinished) {
       return {
