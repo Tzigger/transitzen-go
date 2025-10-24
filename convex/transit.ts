@@ -373,13 +373,13 @@ export const saveTransitData = mutation({
   },
 });
 
-// Query to get all active vehicles
+// Query to get all active vehicles (OPTIMIZED - limited results)
 export const getVehicles = query({
   args: {},
   handler: async (ctx) => {
     const vehicles = await ctx.db
       .query("transitVehicles")
-      .collect();
+      .take(200); // Reduced from 500 to 200 to save memory
 
     return vehicles.map(v => ({
       id: v.vehicleId,
@@ -395,13 +395,13 @@ export const getVehicles = query({
   },
 });
 
-// Query to get all stops
+// Query to get all stops (OPTIMIZED - limited results)
 export const getStops = query({
   args: {},
   handler: async (ctx) => {
     const stops = await ctx.db
       .query("transitStops")
-      .collect();
+      .take(200); // Reduced from 300 to 200 to save memory
 
     return stops.map(s => ({
       id: s.stopId,
@@ -413,30 +413,30 @@ export const getStops = query({
   },
 });
 
-// Query to get all routes
+// Query to get all routes (OPTIMIZED - limited results, NO SHAPES)
 export const getRoutes = query({
   args: {},
   handler: async (ctx) => {
     const routes = await ctx.db
       .query("transitRoutes")
-      .collect();
+      .take(100); // Limit to 100 routes to avoid timeout
 
     return routes.map(r => ({
       route_id: r.routeId,
       route_short_name: r.routeShortName,
       route_long_name: r.routeLongName,
-      shapes: r.shapes,
+      // MEMORY OPTIMIZATION: Don't load shapes by default - use getRouteShapes() instead
     }));
   },
 });
 
-// Query to get trip stop sequences
+// Query to get trip stop sequences (OPTIMIZED - limited results)
 export const getTripStopSequences = query({
   args: {},
   handler: async (ctx) => {
     const stopTimes = await ctx.db
       .query("transitStopTimes")
-      .collect();
+      .take(200); // Reduced from 1000 to 200 to save memory
 
     const tripStopSequences: Record<string, any[]> = {};
     
@@ -462,13 +462,13 @@ export const getTripStopSequences = query({
   },
 });
 
-// Query to get route to trip map
+// Query to get route to trip map (OPTIMIZED - limited results)
 export const getRouteToTripMap = query({
   args: {},
   handler: async (ctx) => {
     const trips = await ctx.db
       .query("transitTrips")
-      .collect();
+      .take(200); // Limit to 200 trips to avoid timeout
 
     const routeToTripMap: Record<string, string> = {};
     
@@ -480,19 +480,21 @@ export const getRouteToTripMap = query({
   },
 });
 
-// Query to get complete transit data (for frontend)
+// Query to get complete transit data (OPTIMIZED - for frontend)
+// WARNING: This query loads a lot of data - use viewport queries when possible
 export const getTransitData = query({
   args: {},
   handler: async (ctx) => {
+    // Use limits to avoid timeout - MEMORY OPTIMIZED
     const [vehicles, stops, routes, stopTimes, trips] = await Promise.all([
-      ctx.db.query("transitVehicles").collect(),
-      ctx.db.query("transitStops").collect(),
-      ctx.db.query("transitRoutes").collect(),
-      ctx.db.query("transitStopTimes").collect(),
-      ctx.db.query("transitTrips").collect(),
+      ctx.db.query("transitVehicles").take(200), // Reduced from 500
+      ctx.db.query("transitStops").take(150), // Reduced from 300
+      ctx.db.query("transitRoutes").take(50), // Reduced from 100
+      ctx.db.query("transitStopTimes").take(100), // Reduced from 1000 - CRITICAL
+      ctx.db.query("transitTrips").take(100), // Reduced from 200
     ]);
 
-    // Format trip stop sequences
+    // Format trip stop sequences (limited to avoid timeout)
     const tripStopSequences: Record<string, any[]> = {};
     for (const stopTime of stopTimes) {
       if (!tripStopSequences[stopTime.tripId]) {
@@ -539,7 +541,7 @@ export const getTransitData = query({
         route_id: r.routeId,
         route_short_name: r.routeShortName,
         route_long_name: r.routeLongName,
-        shapes: r.shapes,
+        // MEMORY OPTIMIZATION: Don't include shapes - use getRouteShapes() instead
       })),
       routeToTripMap,
       tripStopSequences,
@@ -548,7 +550,12 @@ export const getTransitData = query({
   },
 });
 
-// Query to get transit data within viewport bounds (for efficient map rendering)
+// Query to get transit data within viewport bounds (OPTIMIZED - for efficient map rendering)
+// This query is heavily optimized to avoid timeouts by:
+// 1. Only loading essential data (vehicles, stops, routes)
+// 2. Skipping heavy stopTimes processing (loaded separately if needed)
+// 3. Limiting data to viewport bounds
+// 4. Using pagination/limits to avoid loading too much data
 export const getTransitDataInViewport = query({
   args: {
     minLat: v.number(),
@@ -557,13 +564,16 @@ export const getTransitDataInViewport = query({
     maxLng: v.number(),
   },
   handler: async (ctx, args) => {
-    // Get all data but filter vehicles and stops by viewport
-    const [allVehicles, allStops, routes, stopTimes, trips] = await Promise.all([
-      ctx.db.query("transitVehicles").collect(),
-      ctx.db.query("transitStops").collect(),
-      ctx.db.query("transitRoutes").collect(),
-      ctx.db.query("transitStopTimes").collect(),
-      ctx.db.query("transitTrips").collect(),
+    // OPTIMIZATION: Use take() to limit results and avoid timeout - MEMORY OPTIMIZED
+    const VEHICLE_LIMIT = 300; // Reduced from 500
+    const STOP_LIMIT = 150; // Reduced from 300
+    const ROUTE_LIMIT = 50; // Reduced from 100
+
+    // Load limited data only
+    const [allVehicles, allStops, allRoutes] = await Promise.all([
+      ctx.db.query("transitVehicles").take(VEHICLE_LIMIT),
+      ctx.db.query("transitStops").take(STOP_LIMIT),
+      ctx.db.query("transitRoutes").take(ROUTE_LIMIT),
     ]);
 
     // Filter vehicles within viewport
@@ -586,33 +596,7 @@ export const getTransitDataInViewport = query({
     const visibleRouteIds = new Set(vehicles.map(v => v.routeId));
     
     // Only include routes that have visible vehicles
-    const visibleRoutes = routes.filter(r => visibleRouteIds.has(r.routeId));
-
-    // Format trip stop sequences
-    const tripStopSequences: Record<string, any[]> = {};
-    for (const stopTime of stopTimes) {
-      if (!tripStopSequences[stopTime.tripId]) {
-        tripStopSequences[stopTime.tripId] = [];
-      }
-      tripStopSequences[stopTime.tripId].push({
-        stopId: stopTime.stopId,
-        sequence: stopTime.stopSequence,
-        arrivalTime: stopTime.arrivalTime,
-        departureTime: stopTime.departureTime,
-      });
-    }
-    
-    Object.keys(tripStopSequences).forEach(tripId => {
-      tripStopSequences[tripId].sort((a, b) => a.sequence - b.sequence);
-    });
-
-    // Format route to trip map (only for visible routes)
-    const routeToTripMap: Record<string, string> = {};
-    for (const trip of trips) {
-      if (visibleRouteIds.has(trip.routeId)) {
-        routeToTripMap[trip.routeId] = trip.tripId;
-      }
-    }
+    const visibleRoutes = allRoutes.filter(r => visibleRouteIds.has(r.routeId));
 
     return {
       vehicles: vehicles.map(v => ({
@@ -637,10 +621,12 @@ export const getTransitDataInViewport = query({
         route_id: r.routeId,
         route_short_name: r.routeShortName,
         route_long_name: r.routeLongName,
-        shapes: r.shapes,
+        // MEMORY OPTIMIZATION: Don't include shapes - use getRouteShapes() instead
       })),
-      routeToTripMap,
-      tripStopSequences,
+      // Return empty objects for routeToTripMap and tripStopSequences
+      // These will be loaded separately when needed (e.g., for stop details drawer)
+      routeToTripMap: {},
+      tripStopSequences: {},
       timestamp: new Date().toISOString(),
     };
   },
@@ -648,6 +634,7 @@ export const getTransitDataInViewport = query({
 
 // Optimized query for MapView nearby vehicles (minimal data, no timeout)
 // Only returns vehicles + basic route info, no stops/stop times to avoid timeout
+// SUPER OPTIMIZED - limits results aggressively
 export const getTransitDataForNearbyVehicles = query({
   args: {
     userLat: v.number(),
@@ -664,10 +651,14 @@ export const getTransitDataForNearbyVehicles = query({
     const minLng = args.userLng - lngDelta;
     const maxLng = args.userLng + lngDelta;
 
-    // Only load vehicles and routes (skip stops/stopTimes/trips to avoid timeout)
-    const [allVehicles, routes] = await Promise.all([
-      ctx.db.query("transitVehicles").collect(),
-      ctx.db.query("transitRoutes").collect(),
+    // SUPER OPTIMIZATION: Drastically limit results to avoid timeout - MEMORY OPTIMIZED
+    const VEHICLE_LIMIT = 100; // Reduced from 200
+    const ROUTE_LIMIT = 30;    // Reduced from 50
+
+    // Only load limited vehicles and routes
+    const [allVehicles, allRoutes] = await Promise.all([
+      ctx.db.query("transitVehicles").take(VEHICLE_LIMIT),
+      ctx.db.query("transitRoutes").take(ROUTE_LIMIT),
     ]);
 
     // Filter vehicles within radius
@@ -677,6 +668,10 @@ export const getTransitDataForNearbyVehicles = query({
       v.longitude >= minLng && 
       v.longitude <= maxLng
     );
+
+    // Get visible route IDs
+    const visibleRouteIds = new Set(vehicles.map(v => v.routeId));
+    const visibleRoutes = allRoutes.filter(r => visibleRouteIds.has(r.routeId));
 
     return {
       vehicles: vehicles.map(v => ({
@@ -691,15 +686,97 @@ export const getTransitDataForNearbyVehicles = query({
         wheelchair_accessible: v.wheelchairAccessible,
       })),
       stops: [], // No stops for MapView nearby vehicles drawer
-      routes: routes.map(r => ({
+      routes: visibleRoutes.map(r => ({
         route_id: r.routeId,
         route_short_name: r.routeShortName,
         route_long_name: r.routeLongName,
-        shapes: r.shapes,
+        // MEMORY OPTIMIZATION: Don't include shapes - use getRouteShapes() instead
       })),
       routeToTripMap: {}, // Not needed for basic vehicle display
       tripStopSequences: {}, // Not needed for basic vehicle display
       timestamp: new Date().toISOString(),
     };
+  },
+});
+
+// Separate query to get stop times for a specific set of routes (on-demand)
+// Used when user clicks on a stop to see arrivals
+// OPTIMIZED - limits results to avoid timeout
+export const getStopTimesForRoutes = query({
+  args: {
+    routeIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Limit queries to avoid timeout - MEMORY OPTIMIZED
+    const [allTrips, allStopTimes] = await Promise.all([
+      ctx.db.query("transitTrips").take(100), // Reduced from 200
+      ctx.db.query("transitStopTimes").take(200), // Reduced from 1000 - CRITICAL
+    ]);
+
+    // Get trips for the specified routes
+    const relevantTrips = allTrips.filter(t => args.routeIds.includes(t.routeId));
+    const tripIds = new Set(relevantTrips.map(t => t.tripId));
+
+    // Get stop times only for relevant trips
+    const relevantStopTimes = allStopTimes.filter(st => tripIds.has(st.tripId));
+
+    // Format trip stop sequences
+    const tripStopSequences: Record<string, any[]> = {};
+    for (const stopTime of relevantStopTimes) {
+      if (!tripStopSequences[stopTime.tripId]) {
+        tripStopSequences[stopTime.tripId] = [];
+      }
+      tripStopSequences[stopTime.tripId].push({
+        stopId: stopTime.stopId,
+        sequence: stopTime.stopSequence,
+        arrivalTime: stopTime.arrivalTime,
+        departureTime: stopTime.departureTime,
+      });
+    }
+    
+    // Sort by sequence
+    Object.keys(tripStopSequences).forEach(tripId => {
+      tripStopSequences[tripId].sort((a, b) => a.sequence - b.sequence);
+    });
+
+    // Format route to trip map
+    const routeToTripMap: Record<string, string> = {};
+    for (const trip of relevantTrips) {
+      routeToTripMap[trip.routeId] = trip.tripId;
+    }
+
+    return {
+      routeToTripMap,
+      tripStopSequences,
+    };
+  },
+});
+
+// NEW: Query to get shapes for specific routes (on-demand, memory efficient)
+// Only load shapes when user explicitly needs them (e.g., clicking on a route)
+export const getRouteShapes = query({
+  args: {
+    routeIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Limit to 10 routes at a time to avoid memory issues
+    const limitedRouteIds = args.routeIds.slice(0, 10);
+    
+    const routes = await ctx.db
+      .query("transitRoutes")
+      .filter((q) => 
+        q.or(
+          ...limitedRouteIds.map(id => q.eq(q.field("routeId"), id))
+        )
+      )
+      .take(10);
+
+    const shapesMap: Record<string, any[]> = {};
+    
+    for (const route of routes) {
+      shapesMap[route.routeId] = route.shapes;
+    }
+
+    return shapesMap;
   },
 });

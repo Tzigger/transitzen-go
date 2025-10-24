@@ -201,6 +201,7 @@ export const syncVehiclePositions = action({
 });
 
 // Action to sync static data ONCE per day (stops, routes, shapes, trips, stop_times)
+// MEMORY OPTIMIZED: Processes data in smaller chunks
 export const syncStaticTransitData = action({
   args: {},
   handler: async (ctx) => {
@@ -210,118 +211,170 @@ export const syncStaticTransitData = action({
 
       console.log('🔄 Syncing static transit data from Tranzy.ai (daily sync)');
 
-      // Fetch all static data in parallel
-      const [stopsRes, routesRes, shapesRes, tripsRes, stopTimesRes] = await Promise.all([
-        fetch(`${baseUrl}/stops`, { headers }),
-        fetch(`${baseUrl}/routes`, { headers }),
-        fetch(`${baseUrl}/shapes`, { headers }),
-        fetch(`${baseUrl}/trips`, { headers }),
-        fetch(`${baseUrl}/stop_times`, { headers }),
-      ]);
-
+      // MEMORY OPTIMIZATION: Fetch data one at a time instead of all at once
+      console.log('📥 Fetching stops...');
+      const stopsRes = await fetch(`${baseUrl}/stops`, { headers });
       const stopsData = stopsRes.ok ? await stopsRes.json() : [];
-      const routesData = routesRes.ok ? await routesRes.json() : [];
-      const shapesData = shapesRes.ok ? await shapesRes.json() : [];
-      const tripsData = tripsRes.ok ? await tripsRes.json() : [];
-      const stopTimesData = stopTimesRes.ok ? await stopTimesRes.json() : [];
+      console.log(`📥 Fetched ${stopsData.length} stops`);
 
-      console.log(`📥 Fetched ${stopsData.length} stops, ${routesData.length} routes, ${shapesData.length} shapes`);
-
-      // Save ALL stops (not limited to 100)
+      // Save ALL stops in batches
       let stopsSaved = 0;
       let stopsSkipped = 0;
-      console.log(`🚏 Processing ${stopsData.length} stops...`);
+      const STOP_BATCH_SIZE = 50;
+      console.log(`� Processing ${stopsData.length} stops in batches...`);
       
-      for (const stop of stopsData) {
-        try {
-          const result = await ctx.runMutation(api.transit.upsertStop, {
-            id: String(stop.stop_id),
-            name: String(stop.stop_name),
-            latitude: parseFloat(stop.stop_lat),
-            longitude: parseFloat(stop.stop_lon),
-            code: stop.stop_code ? String(stop.stop_code) : undefined,
-          });
-          
-          if (result === 'skipped') {
-            stopsSkipped++;
-          } else {
-            stopsSaved++;
+      for (let i = 0; i < stopsData.length; i += STOP_BATCH_SIZE) {
+        const batch = stopsData.slice(i, i + STOP_BATCH_SIZE);
+        
+        for (const stop of batch) {
+          try {
+            const result = await ctx.runMutation(api.transit.upsertStop, {
+              id: String(stop.stop_id),
+              name: String(stop.stop_name),
+              latitude: parseFloat(stop.stop_lat),
+              longitude: parseFloat(stop.stop_lon),
+              code: stop.stop_code ? String(stop.stop_code) : undefined,
+            });
+            
+            if (result === 'skipped') {
+              stopsSkipped++;
+            } else {
+              stopsSaved++;
+            }
+          } catch (error) {
+            console.error(`Error saving stop ${stop.stop_id}:`, error);
           }
-        } catch (error) {
-          console.error(`Error saving stop ${stop.stop_id}:`, error);
+        }
+        
+        if (i % 200 === 0 && i > 0) {
+          console.log(`🚏 Processed ${i}/${stopsData.length} stops`);
         }
       }
 
       console.log(`🚏 Stops: ${stopsSaved} saved, ${stopsSkipped} unchanged (total: ${stopsData.length})`);
 
-      // Group shapes by shape_id
+      // MEMORY OPTIMIZATION: Fetch routes and process immediately
+      console.log('📥 Fetching routes...');
+      const routesRes = await fetch(`${baseUrl}/routes`, { headers });
+      const routesData = routesRes.ok ? await routesRes.json() : [];
+      console.log(`📥 Fetched ${routesData.length} routes`);
+
+      console.log('📥 Fetching shapes...');
+      const shapesRes = await fetch(`${baseUrl}/shapes`, { headers });
+      const shapesData = shapesRes.ok ? await shapesRes.json() : [];
+      console.log(`📥 Fetched ${shapesData.length} shape points`);
+
+      console.log('📥 Fetching trips...');
+      const tripsRes = await fetch(`${baseUrl}/trips`, { headers });
+      const tripsData = tripsRes.ok ? await tripsRes.json() : [];
+      console.log(`📥 Fetched ${tripsData.length} trips`);
+
+      // MEMORY OPTIMIZATION: Process shapes in batches to avoid loading all at once
+      console.log('🗺️  Processing shapes in batches...');
       const shapesByShapeId: Record<string, any[]> = {};
-      shapesData.forEach((point: any) => {
-        const shapeId = point.shape_id;
-        if (!shapesByShapeId[shapeId]) {
-          shapesByShapeId[shapeId] = [];
-        }
-        shapesByShapeId[shapeId].push({
-          lat: point.shape_pt_lat,
-          lon: point.shape_pt_lon,
-          sequence: point.shape_pt_sequence,
+      const SHAPE_BATCH_SIZE = 1000;
+      
+      for (let i = 0; i < shapesData.length; i += SHAPE_BATCH_SIZE) {
+        const batch = shapesData.slice(i, i + SHAPE_BATCH_SIZE);
+        
+        batch.forEach((point: any) => {
+          const shapeId = point.shape_id;
+          if (!shapesByShapeId[shapeId]) {
+            shapesByShapeId[shapeId] = [];
+          }
+          shapesByShapeId[shapeId].push({
+            lat: point.shape_pt_lat,
+            lon: point.shape_pt_lon,
+            sequence: point.shape_pt_sequence,
+          });
         });
-      });
+        
+        if (i % 5000 === 0 && i > 0) {
+          console.log(`🗺️  Processed ${i}/${shapesData.length} shape points`);
+        }
+      }
 
       // Sort shapes by sequence
       Object.keys(shapesByShapeId).forEach(shapeId => {
         shapesByShapeId[shapeId].sort((a, b) => a.sequence - b.sequence);
       });
 
-      // Save routes with shapes
+      // Save routes with shapes in batches
       let routesSaved = 0;
-      for (const route of routesData) {
-        try {
-          const routeTrips = tripsData.filter((trip: any) => trip.route_id === route.route_id);
-          let shapes: any[] = [];
-          
-          for (const trip of routeTrips) {
-            if (trip.shape_id && shapesByShapeId[trip.shape_id]) {
-              shapes = shapesByShapeId[trip.shape_id];
-              break;
+      const ROUTE_BATCH_SIZE = 10;
+      console.log(`🚌 Processing ${routesData.length} routes in batches...`);
+      
+      for (let i = 0; i < routesData.length; i += ROUTE_BATCH_SIZE) {
+        const batch = routesData.slice(i, i + ROUTE_BATCH_SIZE);
+        
+        for (const route of batch) {
+          try {
+            const routeTrips = tripsData.filter((trip: any) => trip.route_id === route.route_id);
+            let shapes: any[] = [];
+            
+            for (const trip of routeTrips) {
+              if (trip.shape_id && shapesByShapeId[trip.shape_id]) {
+                shapes = shapesByShapeId[trip.shape_id];
+                break;
+              }
             }
+
+            await ctx.runMutation(api.transit.upsertRoute, {
+              route_id: String(route.route_id),
+              route_short_name: String(route.route_short_name),
+              route_long_name: String(route.route_long_name),
+              shapes,
+            });
+            routesSaved++;
+          } catch (error) {
+            console.error(`Error saving route ${route.route_id}:`, error);
           }
-
-          await ctx.runMutation(api.transit.upsertRoute, {
-            route_id: String(route.route_id),
-            route_short_name: String(route.route_short_name),
-            route_long_name: String(route.route_long_name),
-            shapes,
-          });
-          routesSaved++;
-        } catch (error) {
-          console.error(`Error saving route ${route.route_id}:`, error);
+        }
+        
+        if (i % 20 === 0 && i > 0) {
+          console.log(`🚌 Processed ${i}/${routesData.length} routes`);
         }
       }
 
-      // Save trips
+      // MEMORY OPTIMIZATION: Fetch and process trips in batches
+      console.log('📥 Fetching stop times...');
+      const stopTimesRes = await fetch(`${baseUrl}/stop_times`, { headers });
+      const stopTimesData = stopTimesRes.ok ? await stopTimesRes.json() : [];
+      console.log(`📥 Fetched ${stopTimesData.length} stop times`);
+
+      // Save trips in batches
       let tripsSaved = 0;
-      console.log(`🚆 Processing ${tripsData.length} trips...`);
-      for (const trip of tripsData) {
-        try {
-          await ctx.runMutation(api.transit.upsertTrip, {
-            trip_id: String(trip.trip_id),
-            route_id: String(trip.route_id),
-            shape_id: trip.shape_id ? String(trip.shape_id) : undefined,
-          });
-          tripsSaved++;
-        } catch (error) {
-          console.error(`Error saving trip ${trip.trip_id}:`, error);
+      const TRIP_BATCH_SIZE = 50;
+      console.log(`🚆 Processing ${tripsData.length} trips in batches...`);
+      
+      for (let i = 0; i < tripsData.length; i += TRIP_BATCH_SIZE) {
+        const batch = tripsData.slice(i, i + TRIP_BATCH_SIZE);
+        
+        for (const trip of batch) {
+          try {
+            await ctx.runMutation(api.transit.upsertTrip, {
+              trip_id: String(trip.trip_id),
+              route_id: String(trip.route_id),
+              shape_id: trip.shape_id ? String(trip.shape_id) : undefined,
+            });
+            tripsSaved++;
+          } catch (error) {
+            console.error(`Error saving trip ${trip.trip_id}:`, error);
+          }
+        }
+        
+        if (i % 100 === 0 && i > 0) {
+          console.log(`🚆 Processed ${i}/${tripsData.length} trips`);
         }
       }
 
-      // Save stop times (in batches to avoid timeouts)
+      // Save stop times in smaller batches to avoid timeouts and memory issues
       let stopTimesSaved = 0;
-      const BATCH_SIZE = 100;
+      const STOPTIME_BATCH_SIZE = 50; // Reduced from 100
       console.log(`⏰ Processing ${stopTimesData.length} stop times in batches...`);
       
-      for (let i = 0; i < stopTimesData.length; i += BATCH_SIZE) {
-        const batch = stopTimesData.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < stopTimesData.length; i += STOPTIME_BATCH_SIZE) {
+        const batch = stopTimesData.slice(i, i + STOPTIME_BATCH_SIZE);
         
         for (const stopTime of batch) {
           try {
@@ -338,7 +391,9 @@ export const syncStaticTransitData = action({
           }
         }
         
-        console.log(`⏰ Processed ${Math.min(i + BATCH_SIZE, stopTimesData.length)}/${stopTimesData.length} stop times`);
+        if (i % 250 === 0 && i > 0) {
+          console.log(`⏰ Processed ${i}/${stopTimesData.length} stop times`);
+        }
       }
 
       console.log(`✅ Static data sync completed:`);

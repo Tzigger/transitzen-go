@@ -28,6 +28,9 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
+// MEMORY OPTIMIZATION: Cache for route shapes to avoid repeated fetching
+const routeShapesCache: { [key: string]: any[] } = {};
+
 // Calculate distance between two coordinates in km using Haversine formula
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371; // Radius of Earth in km
@@ -82,6 +85,7 @@ const Map = forwardRef<MapRef, MapProps>(({
   const [selectedStop, setSelectedStop] = useState<any>(null);
   const [isStopDrawerOpen, setIsStopDrawerOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
+  const [loadingRouteShapes, setLoadingRouteShapes] = useState(false);
   const selectedRouteLayer = useRef<L.Polyline | null>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [filteredRoutes, setFilteredRoutes] = useState<string[]>([]); // Multiple route IDs
@@ -136,6 +140,24 @@ const Map = forwardRef<MapRef, MapProps>(({
     },
   }));
 
+  // MEMORY OPTIMIZATION: Load shapes on-demand when route is selected
+  const routeShapesQuery = useQuery(
+    api.transit.getRouteShapes,
+    selectedRoute && !selectedRoute.shapes ? { routeIds: [selectedRoute.route_id] } : 'skip'
+  );
+
+  // Update selectedRoute with shapes when they're loaded
+  useEffect(() => {
+    if (routeShapesQuery && selectedRoute && !selectedRoute.shapes) {
+      const shapes = routeShapesQuery[selectedRoute.route_id];
+      if (shapes) {
+        console.log('📦 Loaded shapes for route:', selectedRoute.route_id, shapes.length);
+        setSelectedRoute({ ...selectedRoute, shapes });
+        routeShapesCache[selectedRoute.route_id] = shapes;
+      }
+    }
+  }, [routeShapesQuery, selectedRoute]);
+
   // Draw selected route from stop arrivals menu
   useEffect(() => {
     console.log('🗺️ Selected route changed:', selectedRoute?.route_short_name || 'none');
@@ -189,6 +211,12 @@ const Map = forwardRef<MapRef, MapProps>(({
   }, [selectedRoute]);
 
   // Draw filtered routes on map
+  // MEMORY OPTIMIZATION: Load shapes only for filtered routes
+  const filteredRouteShapesQuery = useQuery(
+    api.transit.getRouteShapes,
+    filteredRoutes.length > 0 && !selectedRoute ? { routeIds: filteredRoutes } : 'skip'
+  );
+
   useEffect(() => {
     if (!map.current || !transitData?.routes) return;
 
@@ -207,16 +235,32 @@ const Map = forwardRef<MapRef, MapProps>(({
 
     console.log('🗺️ Drawing filtered routes:', filteredRoutes);
 
+    // Wait for shapes to load
+    if (!filteredRouteShapesQuery) {
+      console.log('🗺️ Waiting for filtered route shapes to load...');
+      return;
+    }
+
     // Draw each filtered route
     filteredRoutes.forEach((routeId, index) => {
       const route = transitData.routes.find((r: any) => r.route_id === routeId);
       
-      if (route?.shapes && route.shapes.length > 0 && map.current) {
+      if (!route) return;
+
+      // Get shapes from cache or query result
+      const shapes = routeShapesCache[routeId] || filteredRouteShapesQuery[routeId];
+      
+      if (shapes && shapes.length > 0 && map.current) {
+        // Cache shapes for future use
+        if (!routeShapesCache[routeId]) {
+          routeShapesCache[routeId] = shapes;
+        }
+
         // Use color from palette for multiple routes
         const color = routeColorPalette[index % routeColorPalette.length];
         
         const polyline = L.polyline(
-          route.shapes.map((point: any) => [point.lat, point.lon]),
+          shapes.map((point: any) => [point.lat, point.lon]),
           {
             color: color,
             weight: 5,
@@ -247,7 +291,7 @@ const Map = forwardRef<MapRef, MapProps>(({
       });
       filteredRouteLayers.current = [];
     };
-  }, [filteredRoutes, transitData, selectedRoute, routeColorPalette]);
+  }, [filteredRoutes, transitData, selectedRoute, routeColorPalette, filteredRouteShapesQuery]);
 
   // Note: Vehicle route drawing removed - routes shown only from filters or stop selection
 
@@ -655,9 +699,10 @@ const Map = forwardRef<MapRef, MapProps>(({
               return false;
             }
 
-            // Check if vehicle has valid route with shapes
+            // Check if vehicle has valid route
+            // MEMORY OPTIMIZATION: Don't require shapes for vehicle display
             const vehicleRoute = transitData.routes?.find((r: any) => r.route_id === v.routeId);
-            if (!vehicleRoute || !vehicleRoute.shapes || vehicleRoute.shapes.length === 0) {
+            if (!vehicleRoute) {
               return false;
             }
 
