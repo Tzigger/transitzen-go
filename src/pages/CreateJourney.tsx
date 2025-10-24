@@ -255,6 +255,23 @@ const CreateJourney = () => {
     }
   }, [prefilledData?.calculatedRoutes]); // Doar la mount, nu la schimbarea orei
 
+  // Request notification permission on mount
+  useEffect(() => {
+    const requestNotificationPermission = async () => {
+      const hasPermission = await notificationService.checkPermission();
+      if (!hasPermission) {
+        const granted = await notificationService.requestPermission();
+        if (granted) {
+          toast({
+            title: "Notificări activate ✓",
+            description: "Vei primi alerte pentru călătoriile tale",
+          });
+        }
+      }
+    };
+    requestNotificationPermission();
+  }, []);
+
   // Helper function to transform Google routes to RouteDisplay format
   const transformGoogleRoutesToDisplay = (googleRoutes: any[], targetArrivalTime?: Date) => {
     return googleRoutes.map((route: any) => {
@@ -322,23 +339,6 @@ const CreateJourney = () => {
       };
     });
   };
-
-  // Request notification permission on mount
-  useEffect(() => {
-    const requestNotificationPermission = async () => {
-      const hasPermission = await notificationService.checkPermission();
-      if (!hasPermission) {
-        const granted = await notificationService.requestPermission();
-        if (granted) {
-          toast({
-            title: "Notificări activate ✓",
-            description: "Vei primi alerte pentru călătoriile tale",
-          });
-        }
-      }
-    };
-    requestNotificationPermission();
-  }, []);
 
   const handleOriginSearch = async (query: string) => {
     if (!query.trim() || query.length < 3) {
