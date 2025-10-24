@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.transitzen.app",
+  appId: "com.georgecatanescu.transitzen.app",
   appName: "Transitzen",
   webDir: "dist",
   bundledWebRuntime: false,
