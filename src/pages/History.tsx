@@ -48,6 +48,53 @@ const History = () => {
     }
   }, []);
 
+  // Auto-complete finished journeys
+  useEffect(() => {
+    if (!journeys || journeys.length === 0) return;
+
+    const checkAndCompleteJourneys = async () => {
+      const now = new Date();
+      
+      for (const journey of journeys) {
+        // Only check active journeys
+        if (journey.status === 'active') {
+          const arrivalDateTime = new Date(`${journey.arrivalDate}T${journey.arrivalTime}`);
+          
+          // If arrival time has passed, mark as completed
+          if (arrivalDateTime <= now) {
+            try {
+              console.log(`🏁 Auto-completing journey ${journey._id} (arrived at ${journey.arrivalTime})`);
+              await updateJourneyStatus({
+                journeyId: journey._id,
+                status: 'completed',
+                isActive: false,
+              });
+              
+              // Also clear from localStorage if it's there
+              const storedJourney = localStorage.getItem('activeJourney');
+              if (storedJourney) {
+                const parsed = JSON.parse(storedJourney);
+                if (parsed._id === journey._id) {
+                  localStorage.removeItem('activeJourney');
+                  setActiveJourneyId(null);
+                }
+              }
+            } catch (error) {
+              console.error('Error auto-completing journey:', error);
+            }
+          }
+        }
+      }
+    };
+
+    checkAndCompleteJourneys();
+    
+    // Check every minute
+    const interval = setInterval(checkAndCompleteJourneys, 60000);
+    
+    return () => clearInterval(interval);
+  }, [journeys, updateJourneyStatus]);
+
   const deleteJourney = async (id: Id<"journeys">) => {
     try {
       await deleteJourneyMutation({ journeyId: id });
@@ -117,6 +164,17 @@ const History = () => {
   };
 
   const getStatusBadge = (journey: any) => {
+    // Check if journey arrival time has passed
+    const isFinished = !isUpcoming(journey.arrivalDate, journey.arrivalTime);
+    
+    // If journey is marked as active but arrival time has passed, it should be completed
+    if (journey.status === "active" && isFinished) {
+      return {
+        label: "Finalizată",
+        className: "bg-muted/20 text-muted-foreground border-muted/30",
+      };
+    }
+    
     switch (journey.status) {
       case "active":
         return {
